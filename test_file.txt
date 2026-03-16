@@ -1,0 +1,10 @@
+Hello, SecureCloud!
+
+This is a test file to demonstrate the encrypted cloud storage system.
+It contains some sample text that will be:
+1. Compressed using Zstandard
+2. Split into chunks
+3. Encrypted with XChaCha20-Poly1305
+4. Stored securely with BLAKE3 integrity verification
+
+The system provides zero-knowledge security where only you can decrypt your files.

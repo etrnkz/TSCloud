@@ -229,4 +229,17 @@ impl StreamingProcessor {
             updated_at: now,
         })
     }
+
+    fn compress_data(&self, data: &[u8]) -> Result<Vec<u8>> {
+        let mut compressed = Vec::new();
+        {
+            let mut encoder = Encoder::new(&mut compressed, self.compression_level)
+                .map_err(|e| SecureCloudError::Crypto(format!("Compression error: {}", e)))?;
+            encoder.write_all(data)
+                .map_err(|e| SecureCloudError::Crypto(format!("Compression write error: {}", e)))?;
+            encoder.finish()
+                .map_err(|e| SecureCloudError::Crypto(format!("Compression finish error: {}", e)))?;
+        }
+        Ok(compressed)
+    }
 }

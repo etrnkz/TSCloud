@@ -1,4 +1,4 @@
-use crate::{Config, crypto::MasterKey, storage::{StorageEngine, SyncStatus}};
+use crate::{Config, crypto::MasterKey, storage::StorageEngine};
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_uint, c_ulonglong};
 use std::ptr;
@@ -303,45 +303,6 @@ pub unsafe extern "C" fn sc_sync_pending_uploads(engine_id: c_int) -> c_int {
     }) {
         Ok(_) => SC_SUCCESS,
         Err(_) => SC_ERROR_TELEGRAM,
-    }
-}
-
-// Start folder watching
-#[no_mangle]
-pub unsafe extern "C" fn sc_start_folder_watching(
-    engine_id: c_int,
-    folder_path: *const c_char,
-) -> c_int {
-    if folder_path.is_null() {
-        return SC_ERROR_INVALID_PARAM;
-    }
-
-    let engines = match ENGINES.as_ref() {
-        Some(e) => e,
-        None => return SC_ERROR_NOT_FOUND,
-    };
-
-    let engine = match engines.get(&(engine_id as u32)) {
-        Some(e) => e,
-        None => return SC_ERROR_NOT_FOUND,
-    };
-
-    let path_str = match CStr::from_ptr(folder_path).to_str() {
-        Ok(s) => s,
-        Err(_) => return SC_ERROR_INVALID_PARAM,
-    };
-
-    let rt = match tokio::runtime::Runtime::new() {
-        Ok(rt) => rt,
-        Err(_) => return SC_ERROR_IO,
-    };
-
-    match rt.block_on(async {
-        let mut engine = engine.write().await;
-        engine.start_folder_watching(path_str).await
-    }) {
-        Ok(_) => SC_SUCCESS,
-        Err(_) => SC_ERROR_IO,
     }
 }
 

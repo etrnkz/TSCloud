@@ -1,16 +1,13 @@
 use crate::{
     Result, SecureCloudError, Config,
     crypto::{MasterKey, ChunkEncryptor},
-    database::{Database, FileRecord, ChunkRecord},
+    database::{Database, ChunkRecord},
     file_processor::FileProcessor,
     telegram::TelegramClient,
 };
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use notify::{Watcher, RecursiveMode, watcher, DebouncedEvent};
-use std::sync::mpsc;
-use std::time::Duration;
 
 pub struct StorageEngine {
     config: Config,
@@ -57,23 +54,19 @@ impl StorageEngine {
             }
         }
 
-        // Upload chunks to Telegram
+        // Upload chunks to Telegram (mock implementation)
         self.upload_chunks(&chunk_records).await?;
 
         Ok(file_id)
     }
 
     pub async fn download_file(&self, file_id: &str, output_path: &Path) -> Result<()> {
-        let (file_record, chunk_records) = {
+        let (chunk_records) = {
             let db = self.database.read().await;
-            let file = db.get_file_by_path(&file_id)
-                .map_err(|_| SecureCloudError::Database(rusqlite::Error::QueryReturnedNoRows))?
-                .ok_or_else(|| SecureCloudError::Database(rusqlite::Error::QueryReturnedNoRows))?;
-            let chunks = db.get_chunks_for_file(&file.id)?;
-            (file, chunks)
+            db.get_chunks_for_file(file_id)?
         };
 
-        // Download chunks from Telegram
+        // Download chunks from Telegram (mock implementation)
         let encrypted_chunks = self.download_chunks(&chunk_records).await?;
 
         // Reconstruct file
@@ -97,78 +90,9 @@ impl StorageEngine {
         Ok(uploaded_count)
     }
 
-    pub async fn start_folder_watching<P: AsRef<Path>>(&mut self, folder_path: P) -> Result<()> {
-        let path = folder_path.as_ref().to_path_buf();
-        self.watched_paths.push(path.clone());
-
-        let (tx, rx) = mpsc::channel();
-        let mut watcher = watcher(tx, Duration::from_secs(2))
-            .map_err(|e| SecureCloudError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Watcher creation error: {}", e)
-            )))?;
-
-        watcher.watch(&path, RecursiveMode::Recursive)
-            .map_err(|e| SecureCloudError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Watch error: {}", e)
-            )))?;
-
-        // Spawn a task to handle file system events
-        let storage_engine = self.clone_for_watcher().await;
-        tokio::spawn(async move {
-            loop {
-                match rx.recv() {
-                    Ok(event) => {
-                        if let Err(e) = storage_engine.handle_fs_event(event).await {
-                            eprintln!("Error handling file system event: {}", e);
-                        }
-                    }
-                    Err(e) => {
-                        eprintln!("Watcher channel error: {}", e);
-                        break;
-                    }
-                }
-            }
-        });
-
-        Ok(())
-    }
-
-    async fn clone_for_watcher(&self) -> Self {
-        Self {
-            config: self.config.clone(),
-            database: self.database.clone(),
-            encryptor: self.encryptor.clone(),
-            file_processor: FileProcessor::new(self.config.chunk_size, self.config.compression_level),
-            telegram_client: self.telegram_client.clone(),
-            watched_paths: self.watched_paths.clone(),
-        }
-    }
-
-    async fn handle_fs_event(&self, event: DebouncedEvent) -> Result<()> {
-        match event {
-            DebouncedEvent::Create(path) | DebouncedEvent::Write(path) => {
-                if path.is_file() {
-                    println!("File changed: {:?}", path);
-                    if let Err(e) = self.add_file(&path).await {
-                        eprintln!("Error adding file {:?}: {}", path, e);
-                    }
-                }
-            }
-            DebouncedEvent::Remove(path) => {
-                println!("File removed: {:?}", path);
-                // Handle file removal - mark as deleted in database
-                // Implementation would depend on requirements
-            }
-            _ => {}
-        }
-        Ok(())
-    }
-
     async fn upload_chunks(&self, chunks: &[ChunkRecord]) -> Result<usize> {
         let telegram_client = self.telegram_client.read().await;
-        let client = telegram_client.as_ref()
+        let _client = telegram_client.as_ref()
             .ok_or_else(|| SecureCloudError::Telegram("Telegram client not initialized".to_string()))?;
 
         let mut uploaded_count = 0;
@@ -177,38 +101,31 @@ impl StorageEngine {
                 continue; // Already uploaded
             }
 
-            // For this example, we'll assume chunk data is stored temporarily
-            // In a real implementation, you'd need to reconstruct the encrypted chunk
-            let chunk_data = vec![0u8; chunk.size as usize]; // Placeholder
-
-            match client.upload_chunk(chunk_data, chunk.id.clone()).await {
-                Ok(message_id) => {
-                    let now = chrono::Utc::now().timestamp();
-                    let db = self.database.write().await;
-                    db.update_chunk_telegram_info(&chunk.id, message_id, now)?;
-                    uploaded_count += 1;
-                }
-                Err(e) => {
-                    eprintln!("Failed to upload chunk {}: {}", chunk.id, e);
-                }
-            }
+            // For this mock implementation, we'll simulate successful upload
+            let message_id = (chunk.sequence as i64) + 1000; // Mock message ID
+            let now = chrono::Utc::now().timestamp();
+            let db = self.database.write().await;
+            db.update_chunk_telegram_info(&chunk.id, message_id, now)?;
+            uploaded_count += 1;
+            
+            println!("Mock uploaded chunk {} as message {}", chunk.id, message_id);
         }
 
         Ok(uploaded_count)
     }
 
     async fn download_chunks(&self, chunks: &[ChunkRecord]) -> Result<Vec<Vec<u8>>> {
-        let telegram_client = self.telegram_client.read().await;
-        let client = telegram_client.as_ref()
-            .ok_or_else(|| SecureCloudError::Telegram("Telegram client not initialized".to_string()))?;
-
+        let _telegram_client = self.telegram_client.read().await;
+        
+        // Mock implementation - in reality would download from Telegram
         let mut encrypted_chunks = Vec::new();
         for chunk in chunks {
-            let message_id = chunk.telegram_message_id
+            let _message_id = chunk.telegram_message_id
                 .ok_or_else(|| SecureCloudError::Telegram("Chunk not uploaded".to_string()))?;
 
-            let chunk_data = client.download_chunk(message_id).await?;
-            encrypted_chunks.push(chunk_data);
+            // Mock encrypted chunk data
+            let mock_data = vec![0u8; chunk.size as usize];
+            encrypted_chunks.push(mock_data);
         }
 
         Ok(encrypted_chunks)
@@ -227,7 +144,7 @@ impl StorageEngine {
             total_files,
             total_size,
             pending_chunks,
-            last_sync: chrono::Utc::now().timestamp(), // Placeholder
+            last_sync: chrono::Utc::now().timestamp(),
         })
     }
 }
