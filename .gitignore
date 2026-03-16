@@ -1,0 +1,54 @@
+# Rust
+/rust-core/target/
+/rust-core/Cargo.lock
+*.pdb
+
+# .NET
+/desktop-ui/bin/
+/desktop-ui/obj/
+/desktop-ui/packages/
+*.user
+*.suo
+*.cache
+*.dll
+*.pdb
+
+# Android
+/android-client/.gradle/
+/android-client/app/build/
+/android-client/build/
+/android-client/local.properties
+*.apk
+*.aab
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Configuration files with secrets
+config.json
+appsettings.json
+local.properties
+
+# Native libraries (generated)
+/desktop-ui/native/
+secure_cloud_core.h
+
+# Temporary files
+*.tmp
+*.temp
