@@ -18,6 +18,7 @@
             <Button Content="Initialize" Click="InitializeButton_Click" Padding="10,5" Margin="2"/>
             <Separator/>
             <Button Content="Add File" Click="AddFileButton_Click" Padding="10,5" Margin="2"/>
+            <Button Content="Add Folder" Click="AddFolderButton_Click" Padding="10,5" Margin="2"/>
             <Button Content="Settings" Click="SettingsButton_Click" Padding="10,5" Margin="2"/>
         </ToolBar>
 
@@ -61,6 +62,76 @@
                     <!-- Status Text -->
                     <TextBlock Grid.Row="1" Name="FileStatusText"
                                Text="No files uploaded yet. Click 'Add File' to upload your first file."
+                               HorizontalAlignment="Center" 
+                               Margin="10"
+                               FontStyle="Italic"
+                               Foreground="Gray"/>
+                </Grid>
+            </TabItem>
+            
+            <TabItem Header="Folder Sync">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    
+                    <!-- Folder Sync Toolbar -->
+                    <ToolBar Grid.Row="0" Margin="5">
+                        <Button Content="Add Folder" Click="AddFolderButton_Click" Padding="10,5" Margin="2"/>
+                        <Button Content="Remove Folder" Click="RemoveFolderButton_Click" Padding="10,5" Margin="2"/>
+                        <Separator/>
+                        <Button Content="Scan All" Click="ScanAllFoldersButton_Click" Padding="10,5" Margin="2"/>
+                        <Button Content="Pause All" Click="PauseAllFoldersButton_Click" Padding="10,5" Margin="2"/>
+                        <Button Content="Resume All" Click="ResumeAllFoldersButton_Click" Padding="10,5" Margin="2"/>
+                    </ToolBar>
+                    
+                    <!-- Synced Folders List -->
+                    <DataGrid Grid.Row="1" Name="SyncedFoldersDataGrid" 
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True"
+                              SelectionMode="Single"
+                              GridLinesVisibility="Horizontal"
+                              HeadersVisibility="Column"
+                              Margin="5">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Status" Binding="{Binding StatusIcon}" Width="60"/>
+                            <DataGridTextColumn Header="Folder Name" Binding="{Binding FolderName}" Width="*"/>
+                            <DataGridTextColumn Header="Path" Binding="{Binding FolderPath}" Width="300"/>
+                            <DataGridTextColumn Header="Files" Binding="{Binding FileCount}" Width="80"/>
+                            <DataGridTextColumn Header="Size" Binding="{Binding TotalSizeFormatted}" Width="100"/>
+                            <DataGridTextColumn Header="Last Sync" Binding="{Binding LastSyncFormatted}" Width="150"/>
+                            <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="150"/>
+                            <DataGridTemplateColumn Header="Actions" Width="200">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Button Content="Pause" 
+                                                    Click="PauseFolderButton_Click"
+                                                    Tag="{Binding}"
+                                                    Padding="5,2"
+                                                    Margin="2"/>
+                                            <Button Content="Scan" 
+                                                    Click="ScanFolderButton_Click"
+                                                    Tag="{Binding}"
+                                                    Padding="5,2"
+                                                    Margin="2"/>
+                                            <Button Content="Remove" 
+                                                    Click="RemoveSingleFolderButton_Click"
+                                                    Tag="{Binding}"
+                                                    Padding="5,2"
+                                                    Margin="2"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                    
+                    <!-- Folder Sync Status -->
+                    <TextBlock Grid.Row="2" Name="FolderSyncStatusText"
+                               Text="No folders are being synced. Click 'Add Folder' to start syncing a folder."
                                HorizontalAlignment="Center" 
                                Margin="10"
                                FontStyle="Italic"

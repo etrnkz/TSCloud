@@ -13,6 +13,8 @@ using Newtonsoft.Json;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Runtime.InteropServices;
+using SecureCloud.Desktop.Models;
+using SecureCloud.Desktop.Services;
 
 namespace SecureCloud.Desktop
 {
@@ -230,7 +232,9 @@ namespace SecureCloud.Desktop
         private readonly string _botToken = "8269631844:AAGULg5zlyNTTjlf35WtqRjhI9cQ5NztRdA";
         private readonly long _channelId = -1003876315930;
         private readonly ObservableCollection<FileItem> _files = new();
+        private readonly ObservableCollection<SyncedFolder> _syncedFolders = new();
         private readonly CryptoManager _crypto = new();
+        private readonly FolderSyncService _folderSyncService = new();
         private bool _isConnected = false;
         private bool _isEncryptionEnabled = false;
 
@@ -241,11 +245,17 @@ namespace SecureCloud.Desktop
             
             // Set up data binding
             FilesDataGrid.ItemsSource = _files;
+            SyncedFoldersDataGrid.ItemsSource = _syncedFolders;
+            
+            // Set up folder sync service events
+            _folderSyncService.FileChanged += OnFileChanged;
+            _folderSyncService.SyncStatusChanged += OnSyncStatusChanged;
             
             // Update initial status
             UpdateStatus("Ready - SecureCloud with encryption");
             LogActivity("Application started");
             UpdateFileStats();
+            UpdateFolderSyncStats();
             
             // Prompt for encryption password
             PromptForEncryptionPassword();
@@ -357,94 +367,108 @@ namespace SecureCloud.Desktop
 
             if (openFileDialog.ShowDialog() == true)
             {
-                try
-                {
-                    var fileName = Path.GetFileName(openFileDialog.FileName);
-                    UpdateStatus($"Processing {fileName}...");
-                    LogActivity($"📤 Processing {fileName}...");
-                    
-                    var originalData = await File.ReadAllBytesAsync(openFileDialog.FileName);
-                    byte[] uploadData;
-                    byte[]? nonce = null;
-                    byte[]? fileHash = null;
-                    string uploadCaption;
+                await UploadFileAsync(openFileDialog.FileName, isAutoSync: false);
+            }
+        }
 
-                    if (_isEncryptionEnabled && _crypto.IsInitialized)
+        private async Task UploadFileAsync(string filePath, bool isAutoSync = false)
+        {
+            try
+            {
+                var fileName = Path.GetFileName(filePath);
+                var syncPrefix = isAutoSync ? "🔄 Auto-sync: " : "";
+                
+                UpdateStatus($"Processing {fileName}...");
+                LogActivity($"📤 {syncPrefix}Processing {fileName}...");
+                
+                var originalData = await File.ReadAllBytesAsync(filePath);
+                byte[] uploadData;
+                byte[]? nonce = null;
+                byte[]? fileHash = null;
+                string uploadCaption;
+
+                if (_isEncryptionEnabled && _crypto.IsInitialized)
+                {
+                    // Encrypt the file
+                    LogActivity($"🔐 {syncPrefix}Encrypting {fileName}...");
+                    UpdateStatus($"Encrypting {fileName}...");
+                    
+                    var (encryptedData, encryptionNonce) = _crypto.EncryptData(originalData);
+                    if (encryptedData != null && encryptionNonce != null)
                     {
-                        // Encrypt the file
-                        LogActivity($"🔐 Encrypting {fileName}...");
-                        UpdateStatus($"Encrypting {fileName}...");
+                        uploadData = encryptedData;
+                        nonce = encryptionNonce;
+                        fileHash = _crypto.HashData(originalData);
                         
-                        var (encryptedData, encryptionNonce) = _crypto.EncryptData(originalData);
-                        if (encryptedData != null && encryptionNonce != null)
-                        {
-                            uploadData = encryptedData;
-                            nonce = encryptionNonce;
-                            fileHash = _crypto.HashData(originalData);
-                            
-                            uploadCaption = $"🔐 SecureCloud Encrypted: {fileName} " +
-                                          $"(Original: {FormatBytes(originalData.Length)}, " +
-                                          $"Encrypted: {FormatBytes(encryptedData.Length)})";
-                            
-                            LogActivity($"🔐 File encrypted: {FormatBytes(originalData.Length)} → {FormatBytes(encryptedData.Length)}");
-                        }
-                        else
-                        {
-                            LogActivity("❌ Encryption failed, uploading without encryption");
-                            uploadData = originalData;
-                            uploadCaption = $"⚠️ SecureCloud (Unencrypted): {fileName} ({FormatBytes(originalData.Length)})";
-                        }
+                        var syncIndicator = isAutoSync ? "🔄🔐" : "🔐";
+                        uploadCaption = $"{syncIndicator} SecureCloud Encrypted: {fileName} " +
+                                      $"(Original: {FormatBytes(originalData.Length)}, " +
+                                      $"Encrypted: {FormatBytes(encryptedData.Length)})";
+                        
+                        LogActivity($"🔐 {syncPrefix}File encrypted: {FormatBytes(originalData.Length)} → {FormatBytes(encryptedData.Length)}");
                     }
                     else
                     {
+                        LogActivity($"❌ {syncPrefix}Encryption failed, uploading without encryption");
                         uploadData = originalData;
-                        uploadCaption = $"⚠️ SecureCloud (Unencrypted): {fileName} ({FormatBytes(originalData.Length)})";
-                        LogActivity("⚠️ Uploading without encryption");
+                        var syncIndicator = isAutoSync ? "🔄⚠️" : "⚠️";
+                        uploadCaption = $"{syncIndicator} SecureCloud (Unencrypted): {fileName} ({FormatBytes(originalData.Length)})";
                     }
+                }
+                else
+                {
+                    uploadData = originalData;
+                    var syncIndicator = isAutoSync ? "🔄⚠️" : "⚠️";
+                    uploadCaption = $"{syncIndicator} SecureCloud (Unencrypted): {fileName} ({FormatBytes(originalData.Length)})";
+                    LogActivity($"⚠️ {syncPrefix}Uploading without encryption");
+                }
 
-                    UpdateStatus($"Uploading {fileName}...");
-                    LogActivity($"📤 Uploading to Telegram...");
+                UpdateStatus($"Uploading {fileName}...");
+                LogActivity($"📤 {syncPrefix}Uploading to Telegram...");
+                
+                // Create multipart form data
+                using var form = new MultipartFormDataContent();
+                form.Add(new StringContent(_channelId.ToString()), "chat_id");
+                form.Add(new ByteArrayContent(uploadData), "document", $"{fileName}.encrypted");
+                form.Add(new StringContent(uploadCaption), "caption");
+                
+                var response = await _httpClient.PostAsync($"https://api.telegram.org/bot{_botToken}/sendDocument", form);
+                
+                if (response.IsSuccessStatusCode)
+                {
+                    var content = await response.Content.ReadAsStringAsync();
+                    var result = JsonConvert.DeserializeObject<dynamic>(content);
                     
-                    // Create multipart form data
-                    using var form = new MultipartFormDataContent();
-                    form.Add(new StringContent(_channelId.ToString()), "chat_id");
-                    form.Add(new ByteArrayContent(uploadData), "document", $"{fileName}.encrypted");
-                    form.Add(new StringContent(uploadCaption), "caption");
-                    
-                    var response = await _httpClient.PostAsync($"https://api.telegram.org/bot{_botToken}/sendDocument", form);
-                    
-                    if (response.IsSuccessStatusCode)
+                    if (result?.ok == true)
                     {
-                        var content = await response.Content.ReadAsStringAsync();
-                        var result = JsonConvert.DeserializeObject<dynamic>(content);
+                        var messageId = (long)result.result.message_id;
+                        var uploadedSize = (long)result.result.document.file_size;
+                        var fileId = (string)result.result.document.file_id;
                         
-                        if (result?.ok == true)
+                        // Add to file list
+                        var fileItem = new FileItem
                         {
-                            var messageId = (long)result.result.message_id;
-                            var uploadedSize = (long)result.result.document.file_size;
-                            var fileId = (string)result.result.document.file_id;
-                            
-                            // Add to file list
-                            var fileItem = new FileItem
-                            {
-                                FileName = fileName,
-                                Size = originalData.Length,
-                                EncryptedSize = uploadData.Length,
-                                UploadedAt = DateTime.Now,
-                                MessageId = messageId,
-                                FileId = fileId,
-                                FilePath = openFileDialog.FileName,
-                                Nonce = nonce ?? Array.Empty<byte>(),
-                                FileHash = fileHash ?? Array.Empty<byte>()
-                            };
-                            
-                            _files.Add(fileItem);
-                            UpdateFileStats();
-                            
-                            var encryptionStatus = fileItem.IsEncrypted ? "🔐 Encrypted" : "⚠️ Unencrypted";
-                            UpdateStatus($"✅ Uploaded {fileName} ({encryptionStatus})");
-                            LogActivity($"✅ Uploaded {fileName} - {encryptionStatus} (Message ID: {messageId})");
-                            
+                            FileName = fileName,
+                            Size = originalData.Length,
+                            EncryptedSize = uploadData.Length,
+                            UploadedAt = DateTime.Now,
+                            MessageId = messageId,
+                            FileId = fileId,
+                            FilePath = filePath,
+                            Nonce = nonce ?? Array.Empty<byte>(),
+                            FileHash = fileHash ?? Array.Empty<byte>()
+                        };
+                        
+                        _files.Add(fileItem);
+                        UpdateFileStats();
+                        
+                        var encryptionStatus = fileItem.IsEncrypted ? "🔐 Encrypted" : "⚠️ Unencrypted";
+                        var syncStatus = isAutoSync ? " (Auto-sync)" : "";
+                        UpdateStatus($"✅ Uploaded {fileName} ({encryptionStatus}){syncStatus}");
+                        LogActivity($"✅ {syncPrefix}Uploaded {fileName} - {encryptionStatus} (Message ID: {messageId})");
+                        
+                        if (!isAutoSync)
+                        {
                             MessageBox.Show($"File uploaded successfully!\n\n" +
                                           $"File: {fileName}\n" +
                                           $"Original Size: {FormatBytes(originalData.Length)}\n" +
@@ -453,25 +477,35 @@ namespace SecureCloud.Desktop
                                           $"Message ID: {messageId}", 
                                 "Upload Success", MessageBoxButton.OK, MessageBoxImage.Information);
                         }
-                        else
-                        {
-                            UpdateStatus("❌ Upload failed");
-                            LogActivity("❌ Upload failed - API error");
-                            MessageBox.Show("Upload failed", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                        }
                     }
                     else
                     {
-                        UpdateStatus($"❌ HTTP Error: {response.StatusCode}");
-                        LogActivity($"❌ Upload failed - HTTP {response.StatusCode}");
+                        UpdateStatus("❌ Upload failed");
+                        LogActivity($"❌ {syncPrefix}Upload failed - API error");
+                        if (!isAutoSync)
+                        {
+                            MessageBox.Show("Upload failed", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                        }
+                    }
+                }
+                else
+                {
+                    UpdateStatus($"❌ HTTP Error: {response.StatusCode}");
+                    LogActivity($"❌ {syncPrefix}Upload failed - HTTP {response.StatusCode}");
+                    if (!isAutoSync)
+                    {
                         MessageBox.Show($"Upload failed: {response.StatusCode}", "Error", 
                             MessageBoxButton.OK, MessageBoxImage.Error);
                     }
                 }
-                catch (Exception ex)
+            }
+            catch (Exception ex)
+            {
+                var syncPrefix = isAutoSync ? "🔄 Auto-sync: " : "";
+                UpdateStatus($"❌ Error: {ex.Message}");
+                LogActivity($"❌ {syncPrefix}Upload error: {ex.Message}");
+                if (!isAutoSync)
                 {
-                    UpdateStatus($"❌ Error: {ex.Message}");
-                    LogActivity($"❌ Upload error: {ex.Message}");
                     MessageBox.Show($"Upload error: {ex.Message}", "Error", 
                         MessageBoxButton.OK, MessageBoxImage.Error);
                 }
@@ -688,8 +722,198 @@ namespace SecureCloud.Desktop
 
         protected override void OnClosed(EventArgs e)
         {
+            _folderSyncService?.Dispose();
             _httpClient?.Dispose();
             base.OnClosed(e);
+        }
+
+        // Folder Sync Event Handlers
+        private async void OnFileChanged(object? sender, FileChangedEventArgs e)
+        {
+            if (!_isConnected || !_isEncryptionEnabled)
+                return;
+
+            try
+            {
+                // Only handle file creation and modification for auto-sync
+                if (e.ChangeType == FileChangeType.Created || e.ChangeType == FileChangeType.Modified)
+                {
+                    // Wait a bit to ensure file is fully written
+                    await Task.Delay(1000);
+                    
+                    if (File.Exists(e.FilePath))
+                    {
+                        await UploadFileAsync(e.FilePath, isAutoSync: true);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogActivity($"❌ Auto-sync error for {Path.GetFileName(e.FilePath)}: {ex.Message}");
+            }
+        }
+
+        private void OnSyncStatusChanged(object? sender, FolderSyncEventArgs e)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                LogActivity($"📁 {Path.GetFileName(e.FolderPath)}: {e.Message}");
+                UpdateFolderSyncStats();
+            });
+        }
+
+        // Folder Sync Button Handlers
+        private void AddFolderButton_Click(object sender, RoutedEventArgs e)
+        {
+            var folderDialog = new System.Windows.Forms.FolderBrowserDialog
+            {
+                Description = "Select folder to sync with SecureCloud",
+                ShowNewFolderButton = false
+            };
+
+            if (folderDialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+            {
+                var folderPath = folderDialog.SelectedPath;
+                
+                if (_folderSyncService.AddFolder(folderPath))
+                {
+                    var syncedFolder = _folderSyncService.GetSyncedFolders().FirstOrDefault(f => f.FolderPath == folderPath);
+                    if (syncedFolder != null)
+                    {
+                        _syncedFolders.Add(syncedFolder);
+                        LogActivity($"📁 Added folder for sync: {Path.GetFileName(folderPath)}");
+                        UpdateFolderSyncStats();
+                        
+                        MessageBox.Show($"Folder added for syncing!\n\nPath: {folderPath}\nFiles: {syncedFolder.FileCount}\nSize: {syncedFolder.TotalSizeFormatted}", 
+                            "Folder Sync", MessageBoxButton.OK, MessageBoxImage.Information);
+                    }
+                }
+                else
+                {
+                    MessageBox.Show("Failed to add folder for syncing. The folder may already be added or inaccessible.", 
+                        "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+        }
+
+        private void RemoveFolderButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (SyncedFoldersDataGrid.SelectedItem is SyncedFolder selectedFolder)
+            {
+                var result = MessageBox.Show($"Remove folder from sync?\n\nPath: {selectedFolder.FolderPath}\n\nThis will stop monitoring the folder but won't delete any uploaded files.", 
+                    "Remove Folder Sync", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                
+                if (result == MessageBoxResult.Yes)
+                {
+                    if (_folderSyncService.RemoveFolder(selectedFolder.FolderPath))
+                    {
+                        _syncedFolders.Remove(selectedFolder);
+                        LogActivity($"📁 Removed folder from sync: {selectedFolder.FolderName}");
+                        UpdateFolderSyncStats();
+                    }
+                }
+            }
+            else
+            {
+                MessageBox.Show("Please select a folder to remove.", "No Selection", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+
+        private async void ScanAllFoldersButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_syncedFolders.Count == 0)
+            {
+                MessageBox.Show("No folders are being synced.", "No Folders", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            UpdateStatus("Scanning all folders...");
+            LogActivity("🔍 Starting scan of all synced folders");
+
+            foreach (var folder in _syncedFolders)
+            {
+                await _folderSyncService.ScanFolderForChanges(folder.FolderPath);
+            }
+
+            UpdateStatus("Folder scan completed");
+            LogActivity("✅ Completed scan of all synced folders");
+        }
+
+        private void PauseAllFoldersButton_Click(object sender, RoutedEventArgs e)
+        {
+            foreach (var folder in _syncedFolders)
+            {
+                _folderSyncService.SetFolderActive(folder.FolderPath, false);
+            }
+            LogActivity("⏸️ Paused monitoring for all folders");
+        }
+
+        private void ResumeAllFoldersButton_Click(object sender, RoutedEventArgs e)
+        {
+            foreach (var folder in _syncedFolders)
+            {
+                _folderSyncService.SetFolderActive(folder.FolderPath, true);
+            }
+            LogActivity("▶️ Resumed monitoring for all folders");
+        }
+
+        private void PauseFolderButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button button && button.Tag is SyncedFolder folder)
+            {
+                _folderSyncService.SetFolderActive(folder.FolderPath, !folder.IsActive);
+                var action = folder.IsActive ? "Resumed" : "Paused";
+                LogActivity($"📁 {action} monitoring for {folder.FolderName}");
+            }
+        }
+
+        private async void ScanFolderButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button button && button.Tag is SyncedFolder folder)
+            {
+                UpdateStatus($"Scanning {folder.FolderName}...");
+                await _folderSyncService.ScanFolderForChanges(folder.FolderPath);
+                UpdateStatus("Ready");
+            }
+        }
+
+        private void RemoveSingleFolderButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button button && button.Tag is SyncedFolder folder)
+            {
+                var result = MessageBox.Show($"Remove '{folder.FolderName}' from sync?", 
+                    "Remove Folder", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                
+                if (result == MessageBoxResult.Yes)
+                {
+                    if (_folderSyncService.RemoveFolder(folder.FolderPath))
+                    {
+                        _syncedFolders.Remove(folder);
+                        LogActivity($"📁 Removed {folder.FolderName} from sync");
+                        UpdateFolderSyncStats();
+                    }
+                }
+            }
+        }
+
+        private void UpdateFolderSyncStats()
+        {
+            Dispatcher.Invoke(() =>
+            {
+                var activeFolders = _syncedFolders.Count(f => f.IsActive);
+                var totalFiles = _syncedFolders.Sum(f => f.FileCount);
+                var totalSize = _syncedFolders.Sum(f => f.TotalSize);
+
+                if (_syncedFolders.Count == 0)
+                {
+                    FolderSyncStatusText.Text = "No folders are being synced. Click 'Add Folder' to start syncing a folder.";
+                }
+                else
+                {
+                    FolderSyncStatusText.Text = $"{_syncedFolders.Count} folders synced ({activeFolders} active). " +
+                                              $"Total: {totalFiles} files, {FormatBytes(totalSize)}";
+                }
+            });
         }
     }
 }
