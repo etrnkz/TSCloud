@@ -39,6 +39,7 @@ pub struct CSyncStatus {
 pub struct CConfig {
     pub telegram_api_id: c_int,
     pub telegram_api_hash: *const c_char,
+    pub telegram_bot_token: *const c_char, // For Bot API
     pub telegram_channel_id: c_ulonglong,
     pub database_path: *const c_char,
     pub chunk_size: c_uint,
@@ -58,6 +59,12 @@ unsafe fn c_config_to_rust(c_config: *const CConfig) -> Option<Config> {
         CStr::from_ptr(config.telegram_api_hash).to_string_lossy().to_string()
     };
 
+    let bot_token = if config.telegram_bot_token.is_null() {
+        None
+    } else {
+        Some(CStr::from_ptr(config.telegram_bot_token).to_string_lossy().to_string())
+    };
+
     let database_path = if config.database_path.is_null() {
         "secure_cloud.db".to_string()
     } else {
@@ -67,6 +74,7 @@ unsafe fn c_config_to_rust(c_config: *const CConfig) -> Option<Config> {
     Some(Config {
         telegram_api_id: config.telegram_api_id,
         telegram_api_hash: api_hash,
+        telegram_bot_token: bot_token,
         telegram_channel_id: config.telegram_channel_id as i64,
         database_path,
         chunk_size: config.chunk_size as usize,
@@ -319,12 +327,205 @@ pub unsafe extern "C" fn sc_generate_salt(salt_out: *mut u8, salt_len: c_uint) -
     SC_SUCCESS
 }
 
+// Start folder watching
+#[no_mangle]
+pub unsafe extern "C" fn sc_start_folder_watching(
+    engine_id: c_int,
+    folder_path: *const c_char,
+) -> c_int {
+    if folder_path.is_null() {
+        return SC_ERROR_INVALID_PARAM;
+    }
+
+    let engines = match ENGINES.as_ref() {
+        Some(e) => e,
+        None => return SC_ERROR_NOT_FOUND,
+    };
+
+    let engine = match engines.get(&(engine_id as u32)) {
+        Some(e) => e,
+        None => return SC_ERROR_NOT_FOUND,
+    };
+
+    let folder_path_str = match CStr::from_ptr(folder_path).to_str() {
+        Ok(s) => s,
+        Err(_) => return SC_ERROR_INVALID_PARAM,
+    };
+
+    let rt = match tokio::runtime::Runtime::new() {
+        Ok(rt) => rt,
+        Err(_) => return SC_ERROR_IO,
+    };
+
+    match rt.block_on(async {
+        let engine = engine.read().await;
+        engine.start_folder_watching(std::path::Path::new(folder_path_str)).await
+    }) {
+        Ok(_) => SC_SUCCESS,
+        Err(_) => SC_ERROR_IO,
+    }
+}
+
 // Cleanup engine
 #[no_mangle]
 pub unsafe extern "C" fn sc_cleanup_engine(engine_id: c_int) -> c_int {
     if let Some(ref mut engines) = ENGINES {
         engines.remove(&(engine_id as u32));
     }
+    SC_SUCCESS
+}
+
+// Derive key from password using Argon2id
+#[no_mangle]
+pub unsafe extern "C" fn sc_derive_key_from_password(
+    password: *const c_char,
+    salt: *const u8,
+    salt_len: c_uint,
+    key_out: *mut u8,
+    key_len: c_uint,
+) -> c_int {
+    if password.is_null() || salt.is_null() || key_out.is_null() {
+        return SC_ERROR_INVALID_PARAM;
+    }
+
+    if salt_len != 32 || key_len != 32 {
+        return SC_ERROR_INVALID_PARAM;
+    }
+
+    let password_str = match CStr::from_ptr(password).to_str() {
+        Ok(s) => s,
+        Err(_) => return SC_ERROR_INVALID_PARAM,
+    };
+
+    let salt_slice = std::slice::from_raw_parts(salt, salt_len as usize);
+    let mut salt_array = [0u8; 32];
+    salt_array.copy_from_slice(salt_slice);
+
+    match MasterKey::derive_from_password(password_str, &salt_array) {
+        Ok(master_key) => {
+            let key_bytes = master_key.as_bytes();
+            ptr::copy_nonoverlapping(key_bytes.as_ptr(), key_out, 32);
+            SC_SUCCESS
+        }
+        Err(_) => SC_ERROR_CRYPTO,
+    }
+}
+
+// Encrypt data using XChaCha20-Poly1305
+#[no_mangle]
+pub unsafe extern "C" fn sc_encrypt_data(
+    data: *const u8,
+    data_len: c_uint,
+    key: *const u8,
+    key_len: c_uint,
+    nonce_out: *mut u8,
+    nonce_len: c_uint,
+    encrypted_out: *mut u8,
+    encrypted_len: *mut c_uint,
+) -> c_int {
+    if data.is_null() || key.is_null() || nonce_out.is_null() || encrypted_out.is_null() || encrypted_len.is_null() {
+        return SC_ERROR_INVALID_PARAM;
+    }
+
+    if key_len != 32 || nonce_len != 24 {
+        return SC_ERROR_INVALID_PARAM;
+    }
+
+    let data_slice = std::slice::from_raw_parts(data, data_len as usize);
+    let key_slice = std::slice::from_raw_parts(key, key_len as usize);
+    
+    let mut key_array = [0u8; 32];
+    key_array.copy_from_slice(key_slice);
+    
+    let master_key = MasterKey::from_bytes(key_array);
+
+    match master_key.encrypt_data(data_slice) {
+        Ok((encrypted_data, nonce)) => {
+            if encrypted_data.len() > *encrypted_len as usize {
+                return SC_ERROR_INVALID_PARAM;
+            }
+
+            // Copy nonce
+            ptr::copy_nonoverlapping(nonce.as_ptr(), nonce_out, 24);
+            
+            // Copy encrypted data
+            ptr::copy_nonoverlapping(encrypted_data.as_ptr(), encrypted_out, encrypted_data.len());
+            *encrypted_len = encrypted_data.len() as c_uint;
+            
+            SC_SUCCESS
+        }
+        Err(_) => SC_ERROR_CRYPTO,
+    }
+}
+
+// Decrypt data using XChaCha20-Poly1305
+#[no_mangle]
+pub unsafe extern "C" fn sc_decrypt_data(
+    encrypted_data: *const u8,
+    encrypted_len: c_uint,
+    key: *const u8,
+    key_len: c_uint,
+    nonce: *const u8,
+    nonce_len: c_uint,
+    decrypted_out: *mut u8,
+    decrypted_len: *mut c_uint,
+) -> c_int {
+    if encrypted_data.is_null() || key.is_null() || nonce.is_null() || decrypted_out.is_null() || decrypted_len.is_null() {
+        return SC_ERROR_INVALID_PARAM;
+    }
+
+    if key_len != 32 || nonce_len != 24 {
+        return SC_ERROR_INVALID_PARAM;
+    }
+
+    let encrypted_slice = std::slice::from_raw_parts(encrypted_data, encrypted_len as usize);
+    let key_slice = std::slice::from_raw_parts(key, key_len as usize);
+    let nonce_slice = std::slice::from_raw_parts(nonce, nonce_len as usize);
+    
+    let mut key_array = [0u8; 32];
+    key_array.copy_from_slice(key_slice);
+    
+    let mut nonce_array = [0u8; 24];
+    nonce_array.copy_from_slice(nonce_slice);
+    
+    let master_key = MasterKey::from_bytes(key_array);
+
+    match master_key.decrypt_data(encrypted_slice, &nonce_array) {
+        Ok(decrypted_data) => {
+            if decrypted_data.len() > *decrypted_len as usize {
+                return SC_ERROR_INVALID_PARAM;
+            }
+
+            ptr::copy_nonoverlapping(decrypted_data.as_ptr(), decrypted_out, decrypted_data.len());
+            *decrypted_len = decrypted_data.len() as c_uint;
+            
+            SC_SUCCESS
+        }
+        Err(_) => SC_ERROR_CRYPTO,
+    }
+}
+
+// Hash data using BLAKE3
+#[no_mangle]
+pub unsafe extern "C" fn sc_hash_data(
+    data: *const u8,
+    data_len: c_uint,
+    hash_out: *mut u8,
+    hash_len: c_uint,
+) -> c_int {
+    if data.is_null() || hash_out.is_null() {
+        return SC_ERROR_INVALID_PARAM;
+    }
+
+    if hash_len != 32 {
+        return SC_ERROR_INVALID_PARAM;
+    }
+
+    let data_slice = std::slice::from_raw_parts(data, data_len as usize);
+    let hash = blake3::hash(data_slice);
+    
+    ptr::copy_nonoverlapping(hash.as_bytes().as_ptr(), hash_out, 32);
+    
     SC_SUCCESS
 }
 

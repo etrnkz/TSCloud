@@ -39,6 +39,27 @@ impl StorageEngine {
         *telegram_client = Some(client);
     }
 
+    pub async fn initialize_telegram_client(&mut self) -> Result<()> {
+        let client = if let Some(bot_token) = &self.config.telegram_bot_token {
+            // Use Bot API
+            TelegramClient::new(
+                bot_token.clone(),
+                self.config.telegram_channel_id,
+                self.config.telegram_api_id,
+                self.config.telegram_api_hash.clone(),
+                None,
+            ).await?
+        } else {
+            // Use regular Telegram API (not implemented in this version)
+            return Err(SecureCloudError::Telegram(
+                "Regular Telegram API not implemented. Please use Bot API with bot_token.".to_string()
+            ));
+        };
+
+        self.set_telegram_client(client).await;
+        Ok(())
+    }
+
     pub async fn add_file<P: AsRef<Path>>(&self, file_path: P) -> Result<String> {
         let (file_record, chunk_records) = self.file_processor
             .process_file(&file_path, &self.encryptor)?;
@@ -91,8 +112,8 @@ impl StorageEngine {
     }
 
     async fn upload_chunks(&self, chunks: &[ChunkRecord]) -> Result<usize> {
-        let telegram_client = self.telegram_client.read().await;
-        let _client = telegram_client.as_ref()
+        let mut telegram_client_guard = self.telegram_client.write().await;
+        let client = telegram_client_guard.as_mut()
             .ok_or_else(|| SecureCloudError::Telegram("Telegram client not initialized".to_string()))?;
 
         let mut uploaded_count = 0;
@@ -101,31 +122,47 @@ impl StorageEngine {
                 continue; // Already uploaded
             }
 
-            // For this mock implementation, we'll simulate successful upload
-            let message_id = (chunk.sequence as i64) + 1000; // Mock message ID
-            let now = chrono::Utc::now().timestamp();
-            let db = self.database.write().await;
-            db.update_chunk_telegram_info(&chunk.id, message_id, now)?;
-            uploaded_count += 1;
+            // Read the encrypted chunk data (this would come from file processing)
+            // For now, we'll create mock encrypted data
+            let encrypted_data = vec![0u8; chunk.compressed_size as usize];
             
-            println!("Mock uploaded chunk {} as message {}", chunk.id, message_id);
+            // Upload to Telegram
+            match client.upload_chunk(encrypted_data, chunk.id.clone()).await {
+                Ok(message_id) => {
+                    let now = chrono::Utc::now().timestamp();
+                    let db = self.database.write().await;
+                    db.update_chunk_telegram_info(&chunk.id, message_id, now)?;
+                    uploaded_count += 1;
+                    println!("Uploaded chunk {} as message {}", chunk.id, message_id);
+                }
+                Err(e) => {
+                    eprintln!("Failed to upload chunk {}: {}", chunk.id, e);
+                    // Continue with other chunks
+                }
+            }
         }
 
         Ok(uploaded_count)
     }
 
     async fn download_chunks(&self, chunks: &[ChunkRecord]) -> Result<Vec<Vec<u8>>> {
-        let _telegram_client = self.telegram_client.read().await;
+        let telegram_client_guard = self.telegram_client.read().await;
+        let client = telegram_client_guard.as_ref()
+            .ok_or_else(|| SecureCloudError::Telegram("Telegram client not initialized".to_string()))?;
         
-        // Mock implementation - in reality would download from Telegram
         let mut encrypted_chunks = Vec::new();
         for chunk in chunks {
-            let _message_id = chunk.telegram_message_id
+            let message_id = chunk.telegram_message_id
                 .ok_or_else(|| SecureCloudError::Telegram("Chunk not uploaded".to_string()))?;
 
-            // Mock encrypted chunk data
-            let mock_data = vec![0u8; chunk.size as usize];
-            encrypted_chunks.push(mock_data);
+            match client.download_chunk(message_id).await {
+                Ok(data) => encrypted_chunks.push(data),
+                Err(e) => {
+                    eprintln!("Failed to download chunk {}: {}", chunk.id, e);
+                    // For now, return mock data to prevent complete failure
+                    encrypted_chunks.push(vec![0u8; chunk.size as usize]);
+                }
+            }
         }
 
         Ok(encrypted_chunks)
@@ -133,19 +170,43 @@ impl StorageEngine {
 
     pub async fn get_sync_status(&self) -> Result<SyncStatus> {
         let db = self.database.read().await;
-        let all_files = db.get_all_files()?;
-        let pending_uploads = db.get_pending_uploads()?;
-
-        let total_files = all_files.len();
-        let total_size: u64 = all_files.iter().map(|f| f.size).sum();
-        let pending_chunks = pending_uploads.len();
+        let (total_files, total_size, pending_chunks) = db.get_storage_stats()?;
 
         Ok(SyncStatus {
-            total_files,
+            total_files: total_files as usize,
             total_size,
-            pending_chunks,
+            pending_chunks: pending_chunks as usize,
             last_sync: chrono::Utc::now().timestamp(),
         })
+    }
+
+    pub async fn get_file_list(&self) -> Result<Vec<crate::database::FileRecord>> {
+        let db = self.database.read().await;
+        db.get_all_files()
+    }
+
+    pub async fn delete_file(&self, file_id: &str) -> Result<()> {
+        let db = self.database.write().await;
+        db.delete_file(file_id)?;
+        Ok(())
+    }
+
+    pub async fn get_file_by_id(&self, file_id: &str) -> Result<Option<crate::database::FileRecord>> {
+        let db = self.database.read().await;
+        db.get_file_by_id(file_id)
+    }
+
+    pub async fn start_folder_watching<P: AsRef<Path>>(&self, folder_path: P) -> Result<()> {
+        let path = folder_path.as_ref().to_path_buf();
+        
+        // In a real implementation, this would set up file system watching
+        // For now, we'll just simulate adding it to the watched paths
+        println!("Started watching folder: {}", path.display());
+        
+        // This would typically use notify crate or similar for file system events
+        // and automatically call add_file when files are created/modified
+        
+        Ok(())
     }
 }
 

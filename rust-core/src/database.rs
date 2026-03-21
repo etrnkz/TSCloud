@@ -242,4 +242,71 @@ impl Database {
         }
         Ok(chunks)
     }
+
+    pub fn get_file_by_id(&self, file_id: &str) -> Result<Option<FileRecord>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, path, size, hash, compressed_size, chunk_count, created_at, updated_at
+             FROM files WHERE id = ?1"
+        )?;
+
+        let file = stmt.query_row(params![file_id], |row| {
+            Ok(FileRecord {
+                id: row.get(0)?,
+                path: row.get(1)?,
+                size: row.get::<_, i64>(2)? as u64,
+                hash: row.get(3)?,
+                compressed_size: row.get::<_, i64>(4)? as u64,
+                chunk_count: row.get::<_, i64>(5)? as u32,
+                created_at: row.get(6)?,
+                updated_at: row.get(7)?,
+            })
+        });
+
+        match file {
+            Ok(f) => Ok(Some(f)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    pub fn update_file(&self, file: &FileRecord) -> Result<()> {
+        self.conn.execute(
+            "UPDATE files SET path = ?2, size = ?3, hash = ?4, compressed_size = ?5, 
+             chunk_count = ?6, updated_at = ?7 WHERE id = ?1",
+            params![
+                file.id,
+                file.path,
+                file.size as i64,
+                file.hash,
+                file.compressed_size as i64,
+                file.chunk_count as i64,
+                file.updated_at
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_storage_stats(&self) -> Result<(u32, u64, u32)> {
+        let mut stmt = self.conn.prepare(
+            "SELECT COUNT(*) as file_count, COALESCE(SUM(size), 0) as total_size 
+             FROM files"
+        )?;
+
+        let (file_count, total_size) = stmt.query_row([], |row| {
+            Ok((
+                row.get::<_, i64>(0)? as u32,
+                row.get::<_, i64>(1)? as u64,
+            ))
+        })?;
+
+        let mut stmt = self.conn.prepare(
+            "SELECT COUNT(*) FROM chunks WHERE telegram_message_id IS NULL"
+        )?;
+
+        let pending_chunks = stmt.query_row([], |row| {
+            Ok(row.get::<_, i64>(0)? as u32)
+        })?;
+
+        Ok((file_count, total_size, pending_chunks))
+    }
 }

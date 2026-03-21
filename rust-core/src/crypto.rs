@@ -34,6 +34,10 @@ impl MasterKey {
         Ok(Self { key })
     }
 
+    pub fn from_bytes(key_bytes: [u8; KEY_SIZE]) -> Self {
+        Self { key: key_bytes }
+    }
+
     pub fn generate_salt() -> [u8; SALT_SIZE] {
         let mut salt = [0u8; SALT_SIZE];
         OsRng.fill_bytes(&mut salt);
@@ -42,6 +46,16 @@ impl MasterKey {
 
     pub fn as_bytes(&self) -> &[u8; KEY_SIZE] {
         &self.key
+    }
+
+    pub fn encrypt_data(&self, data: &[u8]) -> Result<(Vec<u8>, [u8; NONCE_SIZE])> {
+        let encryptor = ChunkEncryptor::new(self);
+        encryptor.encrypt_chunk(data)
+    }
+
+    pub fn decrypt_data(&self, ciphertext: &[u8], nonce: &[u8; NONCE_SIZE]) -> Result<Vec<u8>> {
+        let encryptor = ChunkEncryptor::new(self);
+        encryptor.decrypt_chunk(ciphertext, nonce)
     }
 }
 
