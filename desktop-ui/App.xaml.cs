@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Data;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using SecureCloud.Desktop.Themes;
 
 namespace SecureCloud.Desktop
 {
@@ -27,6 +28,9 @@ namespace SecureCloud.Desktop
         {
             try
             {
+                // Initialize theme system first
+                ThemeManager.InitializeTheme();
+
                 // Create a simple main window without complex bindings
                 var mainWindow = new SimpleMainWindow();
                 mainWindow.Show();
@@ -43,6 +47,7 @@ namespace SecureCloud.Desktop
 
         protected override void OnExit(ExitEventArgs e)
         {
+            ThemeManager.SaveThemePreference();
             _serviceProvider?.Dispose();
             base.OnExit(e);
         }

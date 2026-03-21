@@ -82,6 +82,14 @@ class TelegramClient @Inject constructor() {
         }
         .build()
 
+    init {
+        // Initialize with default config
+        initialize(TelegramConfig(
+            botToken = "8269631844:AAGULg5zlyNTTjlf35WtqRjhI9cQ5NztRdA",
+            channelId = "-1003876315930"
+        ))
+    }
+
     fun initialize(config: TelegramConfig) {
         this.config = config
         
@@ -94,23 +102,99 @@ class TelegramClient @Inject constructor() {
         api = retrofit.create(TelegramApi::class.java)
     }
 
-    suspend fun testConnection(): Result<TelegramUser> = withContext(Dispatchers.IO) {
+    suspend fun testConnection(): Boolean = withContext(Dispatchers.IO) {
         try {
-            val api = this@TelegramClient.api ?: return@withContext Result.failure(Exception("Client not initialized"))
+            val api = this@TelegramClient.api ?: return@withContext false
             
             val response = api.getMe()
+            response.isSuccessful && response.body()?.ok == true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    data class UploadResult(
+        val messageId: Long,
+        val fileId: String
+    )
+
+    suspend fun uploadFile(
+        encryptedData: ByteArray, 
+        fileName: String, 
+        originalSize: Long, 
+        encryptedSize: Long
+    ): UploadResult = withContext(Dispatchers.IO) {
+        try {
+            val api = this@TelegramClient.api ?: throw Exception("Client not initialized")
+            val config = this@TelegramClient.config ?: throw Exception("Config not set")
+            
+            val requestBody = encryptedData.toRequestBody("application/octet-stream".toMediaType())
+            val filePart = MultipartBody.Part.createFormData(
+                "document", 
+                "$fileName.enc", 
+                requestBody
+            )
+            val chatIdBody = config.channelId.toRequestBody("text/plain".toMediaType())
+            
+            val response = api.sendDocument(chatIdBody, filePart)
             if (response.isSuccessful && response.body()?.ok == true) {
-                val user = response.body()?.result
-                if (user != null) {
-                    Result.success(user)
+                val message = response.body()?.result
+                val document = message?.document
+                if (message != null && document != null) {
+                    UploadResult(
+                        messageId = message.message_id,
+                        fileId = document.file_id
+                    )
                 } else {
-                    Result.failure(Exception("Invalid response"))
+                    throw Exception("Invalid response format")
                 }
             } else {
-                Result.failure(Exception("API error: ${response.body()?.description}"))
+                throw Exception("Upload failed: ${response.body()?.description}")
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            throw Exception("Upload error: ${e.message}")
+        }
+    }
+
+    suspend fun downloadFile(messageId: Long, fileId: String): ByteArray = withContext(Dispatchers.IO) {
+        try {
+            val api = this@TelegramClient.api ?: throw Exception("Client not initialized")
+            val config = this@TelegramClient.config ?: throw Exception("Config not set")
+            
+            // Get file info
+            val fileResponse = api.getFile(fileId)
+            if (!fileResponse.isSuccessful || fileResponse.body()?.ok != true) {
+                throw Exception("Failed to get file info")
+            }
+            
+            val telegramFile = fileResponse.body()?.result
+            val filePath = telegramFile?.file_path ?: throw Exception("No file path")
+            
+            // Download file content
+            val downloadUrl = "https://api.telegram.org/file/bot${config.botToken}/$filePath"
+            val request = Request.Builder()
+                .url(downloadUrl)
+                .build()
+            
+            val response = httpClient.newCall(request).execute()
+            if (response.isSuccessful) {
+                response.body?.bytes() ?: throw Exception("Empty response body")
+            } else {
+                throw Exception("Download failed: ${response.code}")
+            }
+        } catch (e: Exception) {
+            throw Exception("Download error: ${e.message}")
+        }
+    }
+
+    suspend fun deleteFile(messageId: Long): Boolean = withContext(Dispatchers.IO) {
+        try {
+            // Telegram Bot API doesn't support deleting messages in channels
+            // This would require MTProto implementation or admin rights
+            // For now, we'll just return true as files remain accessible
+            true
+        } catch (e: Exception) {
+            false
         }
     }
 

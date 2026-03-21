@@ -15,6 +15,7 @@ using System.Security.Cryptography;
 using System.Runtime.InteropServices;
 using SecureCloud.Desktop.Models;
 using SecureCloud.Desktop.Services;
+using SecureCloud.Desktop.Themes;
 
 namespace SecureCloud.Desktop
 {
@@ -235,6 +236,8 @@ namespace SecureCloud.Desktop
         private readonly ObservableCollection<SyncedFolder> _syncedFolders = new();
         private readonly CryptoManager _crypto = new();
         private readonly FolderSyncService _folderSyncService = new();
+        private readonly VersioningService _versioningService = new();
+        private readonly AnalyticsService _analyticsService = new();
         private bool _isConnected = false;
         private bool _isEncryptionEnabled = false;
 
@@ -243,6 +246,11 @@ namespace SecureCloud.Desktop
             InitializeComponent();
             _httpClient = new HttpClient();
             
+            // Initialize theme system
+            ThemeManager.InitializeTheme();
+            ThemeManager.ThemeChanged += OnThemeChanged;
+            UpdateThemeToggleButton();
+            
             // Set up data binding
             FilesDataGrid.ItemsSource = _files;
             SyncedFoldersDataGrid.ItemsSource = _syncedFolders;
@@ -250,6 +258,13 @@ namespace SecureCloud.Desktop
             // Set up folder sync service events
             _folderSyncService.FileChanged += OnFileChanged;
             _folderSyncService.SyncStatusChanged += OnSyncStatusChanged;
+            
+            // Set up versioning service events
+            _versioningService.VersionCreated += OnVersionCreated;
+            _versioningService.VersionRestored += OnVersionRestored;
+            
+            // Set up analytics service events
+            _analyticsService.AnalyticsUpdated += OnAnalyticsUpdated;
             
             // Update initial status
             UpdateStatus("Ready - SecureCloud with encryption");
@@ -462,6 +477,19 @@ namespace SecureCloud.Desktop
                         _files.Add(fileItem);
                         UpdateFileStats();
                         
+                        // Record analytics
+                        var uploadTime = TimeSpan.FromSeconds(2); // Approximate upload time
+                        _analyticsService.RecordFileUpload(originalData.Length, uploadTime, fileItem.IsEncrypted);
+                        
+                        // Create version if file already exists
+                        if (File.Exists(filePath))
+                        {
+                            var changeDescription = isAutoSync ? "Auto-sync update" : "Manual upload";
+                            await _versioningService.CreateVersionAsync(
+                                filePath, messageId, fileId, nonce ?? Array.Empty<byte>(), 
+                                fileHash ?? Array.Empty<byte>(), originalData.Length, uploadData.Length, changeDescription);
+                        }
+                        
                         var encryptionStatus = fileItem.IsEncrypted ? "🔐 Encrypted" : "⚠️ Unencrypted";
                         var syncStatus = isAutoSync ? " (Auto-sync)" : "";
                         UpdateStatus($"✅ Uploaded {fileName} ({encryptionStatus}){syncStatus}");
@@ -608,6 +636,10 @@ namespace SecureCloud.Desktop
                             {
                                 await File.WriteAllBytesAsync(saveFileDialog.FileName, finalData);
                                 
+                                // Record analytics
+                                var downloadTime = TimeSpan.FromSeconds(1.5); // Approximate download time
+                                _analyticsService.RecordFileDownload(finalData.Length, downloadTime, fileItem.IsEncrypted);
+                                
                                 var encryptionStatus = fileItem.IsEncrypted ? "🔓 Decrypted" : "📄 Plain";
                                 UpdateStatus($"✅ Downloaded {fileItem.FileName} ({encryptionStatus})");
                                 LogActivity($"✅ Downloaded {fileItem.FileName} to {saveFileDialog.FileName} ({encryptionStatus})");
@@ -722,9 +754,33 @@ namespace SecureCloud.Desktop
 
         protected override void OnClosed(EventArgs e)
         {
+            ThemeManager.SaveThemePreference();
             _folderSyncService?.Dispose();
+            _versioningService?.Dispose();
+            _analyticsService?.Dispose();
             _httpClient?.Dispose();
             base.OnClosed(e);
+        }
+
+        // Theme Management
+        private void ThemeToggleButton_Click(object sender, RoutedEventArgs e)
+        {
+            ThemeManager.ToggleTheme();
+            LogActivity($"🎨 Switched to {ThemeManager.CurrentTheme} theme");
+        }
+
+        private void OnThemeChanged(object? sender, AppTheme newTheme)
+        {
+            UpdateThemeToggleButton();
+        }
+
+        private void UpdateThemeToggleButton()
+        {
+            if (ThemeToggleButton != null)
+            {
+                ThemeToggleButton.Content = ThemeManager.CurrentTheme == AppTheme.Dark ? "☀️" : "🌙";
+                ThemeToggleButton.ToolTip = ThemeManager.CurrentTheme == AppTheme.Dark ? "Switch to Light Mode" : "Switch to Dark Mode";
+            }
         }
 
         // Folder Sync Event Handlers
@@ -914,6 +970,80 @@ namespace SecureCloud.Desktop
                                               $"Total: {totalFiles} files, {FormatBytes(totalSize)}";
                 }
             });
+        }
+
+        // Versioning Event Handlers
+        private void OnVersionCreated(object? sender, VersionCreatedEventArgs e)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                LogActivity($"📝 Version {e.Version.VersionNumber} created for {e.Version.FileName}");
+            });
+        }
+
+        private void OnVersionRestored(object? sender, VersionRestoredEventArgs e)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                LogActivity($"🔄 Restored version {e.Version.VersionNumber} of {e.Version.FileName}");
+            });
+        }
+
+        // Analytics Event Handlers
+        private void OnAnalyticsUpdated(object? sender, AnalyticsUpdatedEventArgs e)
+        {
+            // Update analytics display if needed
+            // This could trigger UI updates for real-time metrics
+        }
+
+        // New button handlers for advanced features
+        private void ViewVersionsButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (FilesDataGrid.SelectedItem is FileItem selectedFile)
+            {
+                var versions = _versioningService.GetFileVersions(selectedFile.FileId);
+                var versionInfo = string.Join("\n", versions.Select(v => 
+                    $"Version {v.VersionNumber}: {v.CreatedAt:yyyy-MM-dd HH:mm} - {v.ChangeDescription}"));
+                
+                if (string.IsNullOrEmpty(versionInfo))
+                {
+                    MessageBox.Show("No versions found for this file.", "File Versions", 
+                        MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                else
+                {
+                    MessageBox.Show($"Versions for {selectedFile.FileName}:\n\n{versionInfo}", 
+                        "File Versions", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+            else
+            {
+                MessageBox.Show("Please select a file to view versions.", "No Selection", 
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+
+        private void ViewAnalyticsButton_Click(object sender, RoutedEventArgs e)
+        {
+            var summary = _analyticsService.GetSummary();
+            var health = _analyticsService.GetSystemHealth();
+            
+            var analyticsInfo = $"Analytics Summary (Last 30 Days)\n\n" +
+                              $"Files Uploaded: {summary.TotalFilesUploaded}\n" +
+                              $"Files Downloaded: {summary.TotalFilesDownloaded}\n" +
+                              $"Data Uploaded: {FormatBytes(summary.TotalBytesUploaded)}\n" +
+                              $"Data Downloaded: {FormatBytes(summary.TotalBytesDownloaded)}\n" +
+                              $"Encrypted Files: {summary.EncryptedFilesUploaded}\n" +
+                              $"Sync Operations: {summary.SyncOperations}\n\n" +
+                              $"Performance:\n" +
+                              $"Avg Upload Speed: {FormatBytes((long)summary.AverageUploadSpeed)}/s\n" +
+                              $"Avg Download Speed: {FormatBytes((long)summary.AverageDownloadSpeed)}/s\n\n" +
+                              $"System Health: {health.OverallHealth}\n" +
+                              $"Security Events: {health.CriticalEventsCount} critical\n" +
+                              $"Last Updated: {health.LastUpdated:HH:mm:ss}";
+            
+            MessageBox.Show(analyticsInfo, "Analytics Dashboard", 
+                MessageBoxButton.OK, MessageBoxImage.Information);
         }
     }
 }

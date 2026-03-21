@@ -2,140 +2,148 @@ package com.securecloud.android.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.securecloud.android.data.database.FileEntity
-import com.securecloud.android.data.repository.SecureCloudRepository
-import com.securecloud.android.data.repository.SyncStatus
-import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
-import java.io.File
-import javax.inject.Inject
+import com.securecloud.android.data.model.FileItem
+import com.securecloud.android.data.repository.SecureCloudRepository
+import java.util.*
 
-data class FileListUiState(
-    val files: List<FileEntity> = emptyList(),
-    val syncStatus: SyncStatus? = null,
-    val isLoading: Boolean = false,
-    val error: String? = null
-)
-
-@HiltViewModel
-class FileListViewModel @Inject constructor(
-    private val repository: SecureCloudRepository
+class FileListViewModel(
+    private val repository: SecureCloudRepository = SecureCloudRepository()
 ) : ViewModel() {
     
-    private val _uiState = MutableStateFlow(FileListUiState())
-    val uiState: StateFlow<FileListUiState> = _uiState.asStateFlow()
+    private val _files = MutableStateFlow<List<FileItem>>(emptyList())
+    val files: StateFlow<List<FileItem>> = _files.asStateFlow()
     
-    fun loadFiles() {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-            
-            try {
-                repository.getAllFiles()
-                    .catch { e ->
-                        _uiState.value = _uiState.value.copy(
-                            isLoading = false,
-                            error = "Failed to load files: ${e.message}"
-                        )
-                    }
-                    .collect { files ->
-                        _uiState.value = _uiState.value.copy(
-                            files = files,
-                            isLoading = false
-                        )
-                    }
-                
-                // Also load sync status
-                val syncStatus = repository.getSyncStatus()
-                _uiState.value = _uiState.value.copy(syncStatus = syncStatus)
-                
-            } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    error = "Failed to load files: ${e.message}"
-                )
-            }
-        }
-    }
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
     
-    fun refreshFiles() {
+    private val _uploadProgress = MutableStateFlow<Map<String, Float>>(emptyMap())
+    val uploadProgress: StateFlow<Map<String, Float>> = _uploadProgress.asStateFlow()
+    
+    private val _downloadProgress = MutableStateFlow<Map<String, Float>>(emptyMap())
+    val downloadProgress: StateFlow<Map<String, Float>> = _downloadProgress.asStateFlow()
+    
+    init {
         loadFiles()
     }
     
-    fun syncFromTelegram() {
+    fun loadFiles() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-            
+            _isLoading.value = true
             try {
-                val result = repository.syncMetadataFromTelegram()
-                result.fold(
-                    onSuccess = { files ->
-                        _uiState.value = _uiState.value.copy(
-                            isLoading = false,
-                            error = if (files.isEmpty()) "No new files found" else null
-                        )
-                        // Refresh the file list
-                        loadFiles()
-                    },
-                    onFailure = { e ->
-                        _uiState.value = _uiState.value.copy(
-                            isLoading = false,
-                            error = "Sync failed: ${e.message}"
-                        )
-                    }
-                )
+                val fileList = repository.getFiles()
+                _files.value = fileList
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    error = "Sync failed: ${e.message}"
-                )
+                // Handle error
+                println("Error loading files: ${e.message}")
+            } finally {
+                _isLoading.value = false
             }
         }
     }
     
-    fun downloadFile(fileId: String) {
+    fun addFile() {
         viewModelScope.launch {
             try {
-                val file = repository.getFileById(fileId)
-                if (file == null) {
-                    _uiState.value = _uiState.value.copy(error = "File not found")
-                    return@launch
-                }
-                
-                // Create output file in app's private directory
-                val outputDir = File("/data/data/com.securecloud.android/files/downloads")
-                if (!outputDir.exists()) {
-                    outputDir.mkdirs()
-                }
-                val outputFile = File(outputDir, file.name)
-                
-                val result = repository.downloadAndDecryptFile(fileId, outputFile)
-                result.fold(
-                    onSuccess = {
-                        _uiState.value = _uiState.value.copy(
-                            error = "File downloaded successfully to ${outputFile.absolutePath}"
-                        )
-                        // Refresh to show updated download status
-                        loadFiles()
-                    },
-                    onFailure = { e ->
-                        _uiState.value = _uiState.value.copy(
-                            error = "Download failed: ${e.message}"
-                        )
-                    }
+                // TODO: Implement file picker
+                // For now, create a demo file
+                val demoFile = FileItem(
+                    fileName = "demo_${Date().time}.txt",
+                    size = 1024,
+                    encryptedSize = 1040,
+                    isEncrypted = true,
+                    isUploading = true,
+                    progress = 0f
                 )
+                
+                val currentFiles = _files.value.toMutableList()
+                currentFiles.add(0, demoFile)
+                _files.value = currentFiles
+                
+                // Simulate upload progress
+                simulateUploadProgress(demoFile.id)
+                
+                // TODO: Get password from user and call repository.uploadFile()
+                // val password = getPasswordFromUser()
+                // repository.uploadFile(filePath, fileName, size, password)
+                
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    error = "Download failed: ${e.message}"
-                )
+                println("Error adding file: ${e.message}")
             }
         }
     }
     
-    fun clearError() {
-        _uiState.value = _uiState.value.copy(error = null)
+    fun downloadFile(file: FileItem) {
+        viewModelScope.launch {
+            try {
+                // Update file state to downloading
+                val updatedFiles = _files.value.map { 
+                    if (it.id == file.id) it.copy(isDownloading = true, progress = 0f) 
+                    else it 
+                }
+                _files.value = updatedFiles
+                
+                // Simulate download progress
+                simulateDownloadProgress(file.id)
+                
+                // TODO: Get password from user and call repository.downloadFile()
+                // val password = getPasswordFromUser()
+                // repository.downloadFile(file, password)
+                
+            } catch (e: Exception) {
+                println("Error downloading file: ${e.message}")
+            }
+        }
+    }
+    
+    fun deleteFile(file: FileItem) {
+        viewModelScope.launch {
+            try {
+                repository.deleteFile(file.id)
+                val updatedFiles = _files.value.filter { it.id != file.id }
+                _files.value = updatedFiles
+            } catch (e: Exception) {
+                println("Error deleting file: ${e.message}")
+            }
+        }
+    }
+    
+    private suspend fun simulateUploadProgress(fileId: String) {
+        for (progress in 0..100 step 10) {
+            kotlinx.coroutines.delay(200)
+            val updatedFiles = _files.value.map { 
+                if (it.id == fileId) it.copy(progress = progress / 100f) 
+                else it 
+            }
+            _files.value = updatedFiles
+        }
+        
+        // Mark as completed
+        val completedFiles = _files.value.map { 
+            if (it.id == fileId) it.copy(isUploading = false, progress = 1f) 
+            else it 
+        }
+        _files.value = completedFiles
+    }
+    
+    private suspend fun simulateDownloadProgress(fileId: String) {
+        for (progress in 0..100 step 15) {
+            kotlinx.coroutines.delay(150)
+            val updatedFiles = _files.value.map { 
+                if (it.id == fileId) it.copy(progress = progress / 100f) 
+                else it 
+            }
+            _files.value = updatedFiles
+        }
+        
+        // Mark as completed
+        val completedFiles = _files.value.map { 
+            if (it.id == fileId) it.copy(isDownloading = false, progress = 1f) 
+            else it 
+        }
+        _files.value = completedFiles
     }
 }

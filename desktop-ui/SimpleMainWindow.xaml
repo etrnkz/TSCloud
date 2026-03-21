@@ -3,7 +3,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="SecureCloud - Encrypted Cloud Storage" 
         Height="600" Width="900"
-        WindowStartupLocation="CenterScreen">
+        WindowStartupLocation="CenterScreen"
+        Style="{DynamicResource ModernWindowStyle}">
     
     <Grid>
         <Grid.RowDefinitions>
@@ -13,17 +14,21 @@
         </Grid.RowDefinitions>
 
         <!-- Simple Toolbar -->
-        <ToolBar Grid.Row="0" Margin="5">
-            <Button Content="Test" Click="TestButton_Click" Padding="10,5" Margin="2"/>
-            <Button Content="Initialize" Click="InitializeButton_Click" Padding="10,5" Margin="2"/>
+        <ToolBar Grid.Row="0" Margin="5" Style="{DynamicResource ModernToolBarStyle}">
+            <Button Content="Test" Click="TestButton_Click" Style="{DynamicResource ModernButtonStyle}"/>
+            <Button Content="Initialize" Click="InitializeButton_Click" Style="{DynamicResource ModernButtonStyle}"/>
             <Separator/>
-            <Button Content="Add File" Click="AddFileButton_Click" Padding="10,5" Margin="2"/>
-            <Button Content="Add Folder" Click="AddFolderButton_Click" Padding="10,5" Margin="2"/>
-            <Button Content="Settings" Click="SettingsButton_Click" Padding="10,5" Margin="2"/>
+            <Button Content="Add File" Click="AddFileButton_Click" Style="{DynamicResource ModernButtonStyle}"/>
+            <Button Content="Add Folder" Click="AddFolderButton_Click" Style="{DynamicResource ModernButtonStyle}"/>
+            <Button Content="View Versions" Click="ViewVersionsButton_Click" Style="{DynamicResource SecondaryButtonStyle}"/>
+            <Button Content="Analytics" Click="ViewAnalyticsButton_Click" Style="{DynamicResource SecondaryButtonStyle}"/>
+            <Button Content="Settings" Click="SettingsButton_Click" Style="{DynamicResource SecondaryButtonStyle}"/>
+            <Separator/>
+            <Button Name="ThemeToggleButton" Click="ThemeToggleButton_Click" Style="{DynamicResource ThemeToggleButtonStyle}"/>
         </ToolBar>
 
         <!-- Main Content -->
-        <TabControl Grid.Row="1" Margin="5">
+        <TabControl Grid.Row="1" Margin="5" Style="{DynamicResource ModernTabControlStyle}">
             <TabItem Header="Files">
                 <Grid>
                     <Grid.RowDefinitions>
@@ -36,9 +41,8 @@
                               AutoGenerateColumns="False"
                               IsReadOnly="True"
                               SelectionMode="Single"
-                              GridLinesVisibility="Horizontal"
-                              HeadersVisibility="Column"
-                              Margin="5">
+                              Margin="5"
+                              Style="{DynamicResource ModernDataGridStyle}">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="File Name" Binding="{Binding FileName}" Width="*"/>
                             <DataGridTextColumn Header="Size" Binding="{Binding SizeFormatted}" Width="100"/>
@@ -52,7 +56,7 @@
                                         <Button Content="Download" 
                                                 Click="DownloadButton_Click"
                                                 Tag="{Binding}"
-                                                Padding="5,2"/>
+                                                Style="{DynamicResource SecondaryButtonStyle}"/>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
@@ -64,8 +68,7 @@
                                Text="No files uploaded yet. Click 'Add File' to upload your first file."
                                HorizontalAlignment="Center" 
                                Margin="10"
-                               FontStyle="Italic"
-                               Foreground="Gray"/>
+                               Style="{DynamicResource SecondaryTextStyle}"/>
                 </Grid>
             </TabItem>
             
@@ -78,13 +81,13 @@
                     </Grid.RowDefinitions>
                     
                     <!-- Folder Sync Toolbar -->
-                    <ToolBar Grid.Row="0" Margin="5">
-                        <Button Content="Add Folder" Click="AddFolderButton_Click" Padding="10,5" Margin="2"/>
-                        <Button Content="Remove Folder" Click="RemoveFolderButton_Click" Padding="10,5" Margin="2"/>
+                    <ToolBar Grid.Row="0" Margin="5" Style="{DynamicResource ModernToolBarStyle}">
+                        <Button Content="Add Folder" Click="AddFolderButton_Click" Style="{DynamicResource ModernButtonStyle}"/>
+                        <Button Content="Remove Folder" Click="RemoveFolderButton_Click" Style="{DynamicResource SecondaryButtonStyle}"/>
                         <Separator/>
-                        <Button Content="Scan All" Click="ScanAllFoldersButton_Click" Padding="10,5" Margin="2"/>
-                        <Button Content="Pause All" Click="PauseAllFoldersButton_Click" Padding="10,5" Margin="2"/>
-                        <Button Content="Resume All" Click="ResumeAllFoldersButton_Click" Padding="10,5" Margin="2"/>
+                        <Button Content="Scan All" Click="ScanAllFoldersButton_Click" Style="{DynamicResource SecondaryButtonStyle}"/>
+                        <Button Content="Pause All" Click="PauseAllFoldersButton_Click" Style="{DynamicResource SecondaryButtonStyle}"/>
+                        <Button Content="Resume All" Click="ResumeAllFoldersButton_Click" Style="{DynamicResource SecondaryButtonStyle}"/>
                     </ToolBar>
                     
                     <!-- Synced Folders List -->
@@ -92,9 +95,8 @@
                               AutoGenerateColumns="False"
                               IsReadOnly="True"
                               SelectionMode="Single"
-                              GridLinesVisibility="Horizontal"
-                              HeadersVisibility="Column"
-                              Margin="5">
+                              Margin="5"
+                              Style="{DynamicResource ModernDataGridStyle}">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="Status" Binding="{Binding StatusIcon}" Width="60"/>
                             <DataGridTextColumn Header="Folder Name" Binding="{Binding FolderName}" Width="*"/>
@@ -110,17 +112,17 @@
                                             <Button Content="Pause" 
                                                     Click="PauseFolderButton_Click"
                                                     Tag="{Binding}"
-                                                    Padding="5,2"
+                                                    Style="{DynamicResource SecondaryButtonStyle}"
                                                     Margin="2"/>
                                             <Button Content="Scan" 
                                                     Click="ScanFolderButton_Click"
                                                     Tag="{Binding}"
-                                                    Padding="5,2"
+                                                    Style="{DynamicResource SecondaryButtonStyle}"
                                                     Margin="2"/>
                                             <Button Content="Remove" 
                                                     Click="RemoveSingleFolderButton_Click"
                                                     Tag="{Binding}"
-                                                    Padding="5,2"
+                                                    Style="{DynamicResource SecondaryButtonStyle}"
                                                     Margin="2"/>
                                         </StackPanel>
                                     </DataTemplate>
@@ -134,30 +136,29 @@
                                Text="No folders are being synced. Click 'Add Folder' to start syncing a folder."
                                HorizontalAlignment="Center" 
                                Margin="10"
-                               FontStyle="Italic"
-                               Foreground="Gray"/>
+                               Style="{DynamicResource SecondaryTextStyle}"/>
                 </Grid>
             </TabItem>
             
             <TabItem Header="Status">
                 <Grid Margin="10">
                     <StackPanel>
-                        <TextBlock Name="StatusText" Text="Status: Ready" FontSize="14" Margin="0,5"/>
-                        <TextBlock Name="FilesCountText" Text="Files: 0" FontSize="14" Margin="0,5"/>
-                        <TextBlock Name="StorageText" Text="Storage: 0 bytes" FontSize="14" Margin="0,5"/>
-                        <TextBlock Name="BotInfoText" Text="Bot: Not connected" FontSize="14" Margin="0,5"/>
-                        <TextBlock Name="ChannelInfoText" Text="Channel: Not connected" FontSize="14" Margin="0,5"/>
+                        <TextBlock Name="StatusText" Text="Status: Ready" Style="{DynamicResource BodyTextStyle}" Margin="0,5"/>
+                        <TextBlock Name="FilesCountText" Text="Files: 0" Style="{DynamicResource BodyTextStyle}" Margin="0,5"/>
+                        <TextBlock Name="StorageText" Text="Storage: 0 bytes" Style="{DynamicResource BodyTextStyle}" Margin="0,5"/>
+                        <TextBlock Name="BotInfoText" Text="Bot: Not connected" Style="{DynamicResource BodyTextStyle}" Margin="0,5"/>
+                        <TextBlock Name="ChannelInfoText" Text="Channel: Not connected" Style="{DynamicResource BodyTextStyle}" Margin="0,5"/>
                         
                         <Separator Margin="0,10"/>
                         
-                        <TextBlock Text="Recent Activity:" FontWeight="Bold" FontSize="14" Margin="0,10,0,5"/>
+                        <TextBlock Text="Recent Activity:" Style="{DynamicResource HeaderTextStyle}" Margin="0,10,0,5"/>
                         <ScrollViewer Height="200" VerticalScrollBarVisibility="Auto">
                             <TextBlock Name="ActivityLogText" 
                                        Text="No activity yet."
                                        TextWrapping="Wrap"
                                        FontFamily="Consolas"
                                        FontSize="12"
-                                       Foreground="DarkGreen"/>
+                                       Foreground="{DynamicResource SuccessBrush}"/>
                         </ScrollViewer>
                     </StackPanel>
                 </Grid>
@@ -165,7 +166,7 @@
         </TabControl>
 
         <!-- Status Bar -->
-        <StatusBar Grid.Row="2">
+        <StatusBar Grid.Row="2" Style="{DynamicResource ModernStatusBarStyle}">
             <StatusBarItem>
                 <TextBlock Text="Ready"/>
             </StatusBarItem>
