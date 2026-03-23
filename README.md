@@ -6,7 +6,7 @@
 
 Encrypted cloud storage system using Telegram as infrastructure with zero-knowledge architecture.
 
-## Features
+### Features
 
 - **End-to-end encryption** with XChaCha20-Poly1305
 - **User-controlled infrastructure** - your own Telegram bot and channels
@@ -15,9 +15,7 @@ Encrypted cloud storage system using Telegram as infrastructure with zero-knowle
 - **Real-time folder synchronization**
 - **Multi-channel redundancy** for reliability
 
-## Architecture
-
-TSCloud consists of four main components:
+### Architecture
 
 - **Rust Core**: Cryptographic engine and core logic
 - **Desktop App**: Windows WPF application
@@ -26,15 +24,15 @@ TSCloud consists of four main components:
 
 All platforms use the same Rust core for encryption and Telegram integration.
 
-## Quick Start
+### Quick Start
 
-### Prerequisites
+#### Prerequisites
 
 - Telegram account
 - Windows 10/11 (for desktop app)
 - Android 7.0+ (for mobile app)
 
-### Setup
+#### Setup
 
 1. **Create Telegram Bot**
    - Message [@BotFather](https://t.me/BotFather)
@@ -55,7 +53,7 @@ All platforms use the same Rust core for encryption and Telegram integration.
    - Set a master password for encryption
    - Test the connection
 
-## Configuration
+### Configuration
 
 Basic configuration in `config.json`:
 
@@ -79,23 +77,23 @@ Basic configuration in `config.json`:
 }
 ```
 
-## Security
+### Security
 
 - **XChaCha20-Poly1305**: Authenticated encryption
 - **Argon2id**: Key derivation from password
 - **BLAKE3**: File integrity verification
 - **Zero-knowledge**: Files encrypted before upload
 
-## Building
+### Building
 
-### Requirements
+#### Requirements
 
 - .NET 8.0 SDK
 - Rust 1.70+
 - Node.js 18+ (for web dashboard)
 - Android Studio (for mobile app)
 
-### Build Commands
+#### Build Commands
 
 ```bash
 # Rust core
@@ -111,37 +109,11 @@ cd web-dashboard && npm install && npm run build
 cd android-client && ./gradlew assembleRelease
 ```
 
-## Project Structure
-
-```
-TSCloud/
-├── rust-core/          # Core encryption engine
-├── desktop-ui/         # Windows desktop application
-├── android-client/     # Android mobile application
-├── web-dashboard/      # Web management interface
-├── docs/              # Documentation
-└── .github/           # CI/CD workflows
-```
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
-
-## License
-
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
-
 ## Support
 
 - **Issues**: [GitHub Issues](https://github.com/etrnkz/TSCloud/issues)
 - **Documentation**: [docs/](docs/)
-- **Security**: Report security issues privately
+
 
 ## Acknowledgments
 
