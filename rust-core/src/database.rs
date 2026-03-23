@@ -1,4 +1,4 @@
-use crate::{Result, SecureCloudError, crypto::MasterKey};
+use crate::{Result, TSCloudError, crypto::MasterKey};
 use rusqlite::{Connection, params, Row};
 use serde::{Serialize, Deserialize};
 use std::path::Path;
@@ -72,6 +72,36 @@ impl Database {
             [],
         )?;
 
+        // File locations table for multi-channel support
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS file_locations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                file_id TEXT NOT NULL,
+                channel_id INTEGER NOT NULL,
+                message_id INTEGER NOT NULL,
+                chunk_index INTEGER,
+                is_primary BOOLEAN NOT NULL DEFAULT 0,
+                upload_time INTEGER NOT NULL,
+                verified BOOLEAN NOT NULL DEFAULT 0,
+                telegram_file_id TEXT NOT NULL
+            )",
+            [],
+        )?;
+
+        // Channel health table
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS channel_health (
+                channel_id INTEGER PRIMARY KEY,
+                is_healthy BOOLEAN NOT NULL DEFAULT 1,
+                last_check INTEGER NOT NULL,
+                response_time INTEGER NOT NULL DEFAULT 0,
+                error_count INTEGER NOT NULL DEFAULT 0,
+                success_count INTEGER NOT NULL DEFAULT 0,
+                last_error TEXT
+            )",
+            [],
+        )?;
+
         self.conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_chunks_file_id ON chunks (file_id)",
             [],
@@ -79,6 +109,16 @@ impl Database {
 
         self.conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_chunks_sequence ON chunks (file_id, sequence)",
+            [],
+        )?;
+
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_file_locations_file_id ON file_locations (file_id)",
+            [],
+        )?;
+
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_file_locations_channel_id ON file_locations (channel_id)",
             [],
         )?;
 
@@ -308,5 +348,162 @@ impl Database {
         })?;
 
         Ok((file_count, total_size, pending_chunks))
+    }
+
+    // Multi-channel support methods
+    pub fn store_file_location(&self, file_id: &str, channel_id: i64, message_id: i64, telegram_file_id: &str, is_primary: bool) -> Result<()> {
+        let upload_time = chrono::Utc::now().timestamp();
+        
+        self.conn.execute(
+            "INSERT INTO file_locations (file_id, channel_id, message_id, chunk_index, is_primary, upload_time, verified, telegram_file_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                file_id,
+                channel_id,
+                message_id,
+                None::<i32>, // chunk_index
+                is_primary,
+                upload_time,
+                true, // verified
+                telegram_file_id
+            ],
+        )?;
+
+        Ok(())
+    }
+
+    pub fn get_file_locations(&self, file_id: &str) -> Result<Vec<(i64, i64, String, bool)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT channel_id, message_id, telegram_file_id, is_primary
+             FROM file_locations WHERE file_id = ?1 ORDER BY is_primary DESC, upload_time DESC"
+        )?;
+
+        let location_iter = stmt.query_map([file_id], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,     // channel_id
+                row.get::<_, i64>(1)?,     // message_id
+                row.get::<_, String>(2)?,  // telegram_file_id
+                row.get::<_, bool>(3)?,    // is_primary
+            ))
+        })?;
+
+        let mut locations = Vec::new();
+        for location in location_iter {
+            locations.push(location?);
+        }
+
+        Ok(locations)
+    }
+
+    pub fn remove_file_location(&self, channel_id: i64, message_id: i64) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM file_locations WHERE channel_id = ?1 AND message_id = ?2",
+            params![channel_id, message_id],
+        )?;
+
+        Ok(())
+    }
+
+    pub fn update_channel_health(&self, channel_id: i64, is_healthy: bool, response_time: u64, error: Option<&str>) -> Result<()> {
+        let current_time = chrono::Utc::now().timestamp();
+        
+        // Try to update existing record
+        let updated = self.conn.execute(
+            "UPDATE channel_health SET 
+             is_healthy = ?1, 
+             last_check = ?2, 
+             response_time = ?3,
+             error_count = CASE WHEN ?1 THEN error_count ELSE error_count + 1 END,
+             success_count = CASE WHEN ?1 THEN success_count + 1 ELSE success_count END,
+             last_error = ?4
+             WHERE channel_id = ?5",
+            params![is_healthy, current_time, response_time as i64, error, channel_id],
+        )?;
+
+        // If no record was updated, insert a new one
+        if updated == 0 {
+            self.conn.execute(
+                "INSERT INTO channel_health (channel_id, is_healthy, last_check, response_time, error_count, success_count, last_error)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    channel_id, 
+                    is_healthy, 
+                    current_time, 
+                    response_time as i64,
+                    if is_healthy { 0 } else { 1 },
+                    if is_healthy { 1 } else { 0 },
+                    error
+                ],
+            )?;
+        }
+
+        Ok(())
+    }
+
+    pub fn get_channel_health(&self, channel_id: i64) -> Result<Option<(bool, i64, u64, u32, u32, Option<String>)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT is_healthy, last_check, response_time, error_count, success_count, last_error
+             FROM channel_health WHERE channel_id = ?1"
+        )?;
+
+        let health = stmt.query_row(params![channel_id], |row| {
+            Ok((
+                row.get::<_, bool>(0)?,           // is_healthy
+                row.get::<_, i64>(1)?,            // last_check
+                row.get::<_, i64>(2)? as u64,     // response_time
+                row.get::<_, i64>(3)? as u32,     // error_count
+                row.get::<_, i64>(4)? as u32,     // success_count
+                row.get::<_, Option<String>>(5)?, // last_error
+            ))
+        });
+
+        match health {
+            Ok(h) => Ok(Some(h)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    pub fn get_all_channel_health(&self) -> Result<Vec<(i64, bool, i64, u64, u32, u32, Option<String>)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT channel_id, is_healthy, last_check, response_time, error_count, success_count, last_error
+             FROM channel_health ORDER BY channel_id"
+        )?;
+
+        let health_iter = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,            // channel_id
+                row.get::<_, bool>(1)?,           // is_healthy
+                row.get::<_, i64>(2)?,            // last_check
+                row.get::<_, i64>(3)? as u64,     // response_time
+                row.get::<_, i64>(4)? as u32,     // error_count
+                row.get::<_, i64>(5)? as u32,     // success_count
+                row.get::<_, Option<String>>(6)?, // last_error
+            ))
+        })?;
+
+        let mut health_records = Vec::new();
+        for health in health_iter {
+            health_records.push(health?);
+        }
+
+        Ok(health_records)
+    }
+
+    pub fn get_files_by_channel(&self, channel_id: i64) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT DISTINCT file_id FROM file_locations WHERE channel_id = ?1"
+        )?;
+
+        let file_iter = stmt.query_map([channel_id], |row| {
+            Ok(row.get::<_, String>(0)?)
+        })?;
+
+        let mut file_ids = Vec::new();
+        for file_id in file_iter {
+            file_ids.push(file_id?);
+        }
+
+        Ok(file_ids)
     }
 }

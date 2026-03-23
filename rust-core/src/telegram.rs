@@ -1,4 +1,4 @@
-use crate::{Result, SecureCloudError};
+use crate::{Result, TSCloudError};
 use reqwest::multipart;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -36,7 +36,6 @@ struct File {
 
 pub struct TelegramClient {
     bot_token: String,
-    channel_id: i64,
     client: reqwest::Client,
     base_url: String,
 }
@@ -44,7 +43,6 @@ pub struct TelegramClient {
 impl TelegramClient {
     pub async fn new(
         bot_token: String,
-        channel_id: i64,
         _api_id: i32,      // Not used in Bot API
         _api_hash: String, // Not used in Bot API
         _session_file: Option<String>, // Not used in Bot API
@@ -54,7 +52,6 @@ impl TelegramClient {
         
         let telegram_client = Self {
             bot_token,
-            channel_id,
             client,
             base_url,
         };
@@ -68,26 +65,142 @@ impl TelegramClient {
     async fn test_connection(&self) -> Result<()> {
         let url = format!("{}/getMe", self.base_url);
         let response = self.client.get(&url).send().await
-            .map_err(|e| SecureCloudError::Telegram(format!("Connection failed: {}", e)))?;
+            .map_err(|e| TSCloudError::Telegram(format!("Connection failed: {}", e)))?;
         
         if !response.status().is_success() {
-            return Err(SecureCloudError::Telegram("Invalid bot token".to_string()));
+            return Err(TSCloudError::Telegram("Invalid bot token".to_string()));
         }
         
         Ok(())
     }
 
-    pub async fn upload_chunk(&mut self, chunk_data: Vec<u8>, chunk_id: String) -> Result<i64> {
+    pub async fn test_channel_health(&self, channel_id: i64) -> Result<()> {
+        let url = format!("{}/getChat", self.base_url);
+        let params = HashMap::from([
+            ("chat_id", channel_id.to_string()),
+        ]);
+
+        let response = self.client
+            .post(&url)
+            .json(&params)
+            .send()
+            .await
+            .map_err(|e| TSCloudError::Telegram(format!("Health check failed: {}", e)))?;
+
+        if response.status().is_success() {
+            Ok(())
+        } else {
+            Err(TSCloudError::Telegram("Channel health check failed".to_string()))
+        }
+    }
+
+    pub async fn upload_file(
+        &self,
+        channel_id: i64,
+        file_data: &[u8],
+        file_name: &str,
+    ) -> Result<(i64, String)> {
+        let form = multipart::Form::new()
+            .text("chat_id", channel_id.to_string())
+            .part("document", 
+                multipart::Part::bytes(file_data.to_vec())
+                    .file_name(file_name.to_string())
+                    .mime_str("application/octet-stream")
+                    .map_err(|e| TSCloudError::Telegram(format!("Failed to create multipart: {}", e)))?
+            )
+            .text("caption", format!("🔐 TSCloud: {} ({} bytes)", file_name, file_data.len()));
+
+        let url = format!("{}/sendDocument", self.base_url);
+        let response = self.client
+            .post(&url)
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|e| TSCloudError::Telegram(format!("Upload failed: {}", e)))?;
+
+        let response_text = response.text().await
+            .map_err(|e| TSCloudError::Telegram(format!("Failed to read response: {}", e)))?;
+
+        let telegram_response: TelegramResponse<Message> = serde_json::from_str(&response_text)
+            .map_err(|e| TSCloudError::Telegram(format!("Failed to parse response: {}", e)))?;
+
+        if !telegram_response.ok {
+            return Err(TSCloudError::Telegram(
+                telegram_response.description.unwrap_or("Upload failed".to_string())
+            ));
+        }
+
+        let message = telegram_response.result
+            .ok_or_else(|| TSCloudError::Telegram("No message in response".to_string()))?;
+
+        let document = message.document
+            .ok_or_else(|| TSCloudError::Telegram("No document in response".to_string()))?;
+
+        Ok((message.message_id, document.file_id))
+    }
+
+    pub async fn download_file(&self, _channel_id: i64, file_id: &str) -> Result<Vec<u8>> {
+        // First get file info
+        let file_info = self.get_file_info(file_id).await?;
+        
+        if let Some(file_path) = file_info.file_path {
+            let download_url = format!("https://api.telegram.org/file/bot{}/{}", self.bot_token, file_path);
+            
+            let response = self.client.get(&download_url).send().await
+                .map_err(|e| TSCloudError::Telegram(format!("Download failed: {}", e)))?;
+            
+            if response.status().is_success() {
+                let file_data = response.bytes().await
+                    .map_err(|e| TSCloudError::Telegram(format!("Failed to read file data: {}", e)))?;
+                Ok(file_data.to_vec())
+            } else {
+                Err(TSCloudError::Telegram(format!("Download failed with status: {}", response.status())))
+            }
+        } else {
+            Err(TSCloudError::Telegram("No file path in response".to_string()))
+        }
+    }
+
+    pub async fn get_file_info(&self, file_id: &str) -> Result<File> {
+        let url = format!("{}/getFile", self.base_url);
+        let params = HashMap::from([
+            ("file_id", file_id.to_string()),
+        ]);
+
+        let response = self.client
+            .post(&url)
+            .json(&params)
+            .send()
+            .await
+            .map_err(|e| TSCloudError::Telegram(format!("Get file info failed: {}", e)))?;
+
+        let response_text = response.text().await
+            .map_err(|e| TSCloudError::Telegram(format!("Failed to read response: {}", e)))?;
+
+        let telegram_response: TelegramResponse<File> = serde_json::from_str(&response_text)
+            .map_err(|e| TSCloudError::Telegram(format!("Failed to parse response: {}", e)))?;
+
+        if telegram_response.ok {
+            telegram_response.result
+                .ok_or_else(|| TSCloudError::Telegram("No result in response".to_string()))
+        } else {
+            Err(TSCloudError::Telegram(
+                telegram_response.description.unwrap_or("Get file info failed".to_string())
+            ))
+        }
+    }
+
+    pub async fn upload_chunk(&mut self, chunk_data: Vec<u8>, chunk_id: String, channel_id: i64) -> Result<i64> {
         // Create a document with the chunk data
         let filename = format!("{}.bin", chunk_id);
         
         let form = multipart::Form::new()
-            .text("chat_id", self.channel_id.to_string())
+            .text("chat_id", channel_id.to_string())
             .part("document", 
                 multipart::Part::bytes(chunk_data)
                     .file_name(filename)
                     .mime_str("application/octet-stream")
-                    .map_err(|e| SecureCloudError::Telegram(format!("Failed to create multipart: {}", e)))?
+                    .map_err(|e| TSCloudError::Telegram(format!("Failed to create multipart: {}", e)))?
             );
 
         let url = format!("{}/sendDocument", self.base_url);
@@ -96,22 +209,22 @@ impl TelegramClient {
             .multipart(form)
             .send()
             .await
-            .map_err(|e| SecureCloudError::Telegram(format!("Upload failed: {}", e)))?;
+            .map_err(|e| TSCloudError::Telegram(format!("Upload failed: {}", e)))?;
 
         let response_text = response.text().await
-            .map_err(|e| SecureCloudError::Telegram(format!("Failed to read response: {}", e)))?;
+            .map_err(|e| TSCloudError::Telegram(format!("Failed to read response: {}", e)))?;
 
         let telegram_response: TelegramResponse<Message> = serde_json::from_str(&response_text)
-            .map_err(|e| SecureCloudError::Telegram(format!("Failed to parse response: {}", e)))?;
+            .map_err(|e| TSCloudError::Telegram(format!("Failed to parse response: {}", e)))?;
 
         if !telegram_response.ok {
-            return Err(SecureCloudError::Telegram(
+            return Err(TSCloudError::Telegram(
                 telegram_response.description.unwrap_or("Upload failed".to_string())
             ));
         }
 
         let message = telegram_response.result
-            .ok_or_else(|| SecureCloudError::Telegram("No message in response".to_string()))?;
+            .ok_or_else(|| TSCloudError::Telegram("No message in response".to_string()))?;
 
         Ok(message.message_id)
     }
@@ -124,22 +237,22 @@ impl TelegramClient {
         // In production, you should store file_id in database when uploading
         let url = format!("{}/getUpdates", self.base_url);
         let response = self.client.get(&url).send().await
-            .map_err(|e| SecureCloudError::Telegram(format!("Failed to get updates: {}", e)))?;
+            .map_err(|e| TSCloudError::Telegram(format!("Failed to get updates: {}", e)))?;
 
         let response_text = response.text().await
-            .map_err(|e| SecureCloudError::Telegram(format!("Failed to read response: {}", e)))?;
+            .map_err(|e| TSCloudError::Telegram(format!("Failed to read response: {}", e)))?;
 
         // For now, return an error with instructions for proper implementation
-        Err(SecureCloudError::Telegram(
+        Err(TSCloudError::Telegram(
             "Download requires file_id storage. In production, store file_id when uploading and use getFile API.".to_string()
         ))
     }
 
-    pub async fn delete_message(&mut self, message_id: i64) -> Result<()> {
+    pub async fn delete_message(&mut self, channel_id: i64, message_id: i64) -> Result<()> {
         let url = format!("{}/deleteMessage", self.base_url);
         
         let params = HashMap::from([
-            ("chat_id", self.channel_id.to_string()),
+            ("chat_id", channel_id.to_string()),
             ("message_id", message_id.to_string()),
         ]);
 
@@ -148,16 +261,16 @@ impl TelegramClient {
             .json(&params)
             .send()
             .await
-            .map_err(|e| SecureCloudError::Telegram(format!("Delete failed: {}", e)))?;
+            .map_err(|e| TSCloudError::Telegram(format!("Delete failed: {}", e)))?;
 
         let response_text = response.text().await
-            .map_err(|e| SecureCloudError::Telegram(format!("Failed to read response: {}", e)))?;
+            .map_err(|e| TSCloudError::Telegram(format!("Failed to read response: {}", e)))?;
 
         let telegram_response: TelegramResponse<bool> = serde_json::from_str(&response_text)
-            .map_err(|e| SecureCloudError::Telegram(format!("Failed to parse response: {}", e)))?;
+            .map_err(|e| TSCloudError::Telegram(format!("Failed to parse response: {}", e)))?;
 
         if !telegram_response.ok {
-            return Err(SecureCloudError::Telegram(
+            return Err(TSCloudError::Telegram(
                 telegram_response.description.unwrap_or("Delete failed".to_string())
             ));
         }
@@ -165,11 +278,11 @@ impl TelegramClient {
         Ok(())
     }
 
-    pub async fn get_channel_info(&self) -> Result<String> {
+    pub async fn get_channel_info(&self, channel_id: i64) -> Result<String> {
         let url = format!("{}/getChat", self.base_url);
         
         let params = HashMap::from([
-            ("chat_id", self.channel_id.to_string()),
+            ("chat_id", channel_id.to_string()),
         ]);
 
         let response = self.client
@@ -177,17 +290,13 @@ impl TelegramClient {
             .json(&params)
             .send()
             .await
-            .map_err(|e| SecureCloudError::Telegram(format!("Get chat info failed: {}", e)))?;
+            .map_err(|e| TSCloudError::Telegram(format!("Get chat info failed: {}", e)))?;
 
         if response.status().is_success() {
-            Ok(format!("Telegram Channel (ID: {})", self.channel_id))
+            Ok(format!("Telegram Channel (ID: {})", channel_id))
         } else {
-            Err(SecureCloudError::Telegram("Failed to get channel info".to_string()))
+            Err(TSCloudError::Telegram("Failed to get channel info".to_string()))
         }
-    }
-
-    pub fn set_channel_id(&mut self, channel_id: i64) {
-        self.channel_id = channel_id;
     }
 }
 
@@ -208,6 +317,7 @@ impl ParallelUploader {
     pub async fn upload_chunks(
         &mut self,
         chunks: Vec<(String, Vec<u8>)>, // (chunk_id, data)
+        channel_id: i64,
         progress_callback: impl Fn(usize, usize) + Send + Sync + 'static,
     ) -> Result<Vec<(String, i64)>> { // (chunk_id, message_id)
         let mut results = Vec::new();
@@ -215,7 +325,7 @@ impl ParallelUploader {
 
         // Process chunks with rate limiting (Telegram allows ~30 messages/second)
         for (i, (chunk_id, chunk_data)) in chunks.into_iter().enumerate() {
-            let message_id = self.client.upload_chunk(chunk_data, chunk_id.clone()).await?;
+            let message_id = self.client.upload_chunk(chunk_data, chunk_id.clone(), channel_id).await?;
             results.push((chunk_id, message_id));
             progress_callback(i + 1, total_chunks);
             
@@ -269,7 +379,7 @@ mod tests {
             })
         }
 
-        pub async fn upload_chunk(&mut self, chunk_data: Vec<u8>, chunk_id: String) -> Result<i64> {
+        pub async fn upload_chunk(&mut self, chunk_data: Vec<u8>, chunk_id: String, _channel_id: i64) -> Result<i64> {
             let message_id = self.next_message_id;
             self.next_message_id += 1;
             
@@ -283,7 +393,7 @@ mod tests {
             self.mock_storage
                 .get(&message_id.to_string())
                 .cloned()
-                .ok_or_else(|| SecureCloudError::Telegram("Chunk not found".to_string()))
+                .ok_or_else(|| TSCloudError::Telegram("Chunk not found".to_string()))
         }
 
         pub async fn delete_message(&mut self, message_id: i64) -> Result<()> {

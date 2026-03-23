@@ -1,7 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace SecureCloud.Desktop;
+namespace TSCloud.Desktop;
 
 public static class NativeMethods
 {

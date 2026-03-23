@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SecureCloud Integration Test
+TSCloud Integration Test
 Tests the core functionality without requiring full UI setup
 """
 
@@ -127,7 +127,7 @@ def test_database_functionality():
 
 def main():
     """Run all integration tests"""
-    print("🚀 SecureCloud Integration Test Suite")
+    print("🚀 TSCloud Integration Test Suite")
     print("=" * 50)
     
     tests = [
@@ -155,7 +155,7 @@ def main():
     print(f"📊 Test Results: {passed}/{total} tests passed")
     
     if passed == total:
-        print("🎉 All tests passed! SecureCloud is working correctly.")
+        print("🎉 All tests passed! TSCloud is working correctly.")
         return True
     else:
         print("⚠️  Some tests failed. Check the output above.")

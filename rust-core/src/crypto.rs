@@ -1,4 +1,4 @@
-use crate::{Result, SecureCloudError};
+use crate::{Result, TSCloudError};
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use argon2::password_hash::{rand_core::OsRng, SaltString};
 use chacha20poly1305::{XChaCha20Poly1305, Key, XNonce, aead::{Aead, KeyInit, OsRng as AeadOsRng}};
@@ -17,16 +17,16 @@ pub struct MasterKey {
 impl MasterKey {
     pub fn derive_from_password(password: &str, salt: &[u8]) -> Result<Self> {
         if salt.len() != SALT_SIZE {
-            return Err(SecureCloudError::Crypto("Invalid salt size".to_string()));
+            return Err(TSCloudError::Crypto("Invalid salt size".to_string()));
         }
 
         let argon2 = Argon2::default();
         let salt_string = SaltString::encode_b64(salt)
-            .map_err(|e| SecureCloudError::Crypto(format!("Salt encoding error: {}", e)))?;
+            .map_err(|e| TSCloudError::Crypto(format!("Salt encoding error: {}", e)))?;
         
         let password_hash = argon2
             .hash_password(password.as_bytes(), &salt_string)
-            .map_err(|e| SecureCloudError::Crypto(format!("Key derivation error: {}", e)))?;
+            .map_err(|e| TSCloudError::Crypto(format!("Key derivation error: {}", e)))?;
 
         let mut key = [0u8; KEY_SIZE];
         key.copy_from_slice(&password_hash.hash.unwrap().as_bytes()[..KEY_SIZE]);
@@ -77,7 +77,7 @@ impl ChunkEncryptor {
 
         let ciphertext = self.cipher
             .encrypt(nonce, data)
-            .map_err(|e| SecureCloudError::Crypto(format!("Encryption error: {}", e)))?;
+            .map_err(|e| TSCloudError::Crypto(format!("Encryption error: {}", e)))?;
 
         Ok((ciphertext, nonce_bytes))
     }
@@ -87,7 +87,7 @@ impl ChunkEncryptor {
         
         let plaintext = self.cipher
             .decrypt(nonce, ciphertext)
-            .map_err(|e| SecureCloudError::Crypto(format!("Decryption error: {}", e)))?;
+            .map_err(|e| TSCloudError::Crypto(format!("Decryption error: {}", e)))?;
 
         Ok(plaintext)
     }

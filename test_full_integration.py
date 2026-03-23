@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-SecureCloud Full Integration Test
-Tests the complete SecureCloud system with real Telegram integration
+TSCloud Full Integration Test
+Tests the complete TSCloud system with real Telegram integration
 """
 
 import os
@@ -167,10 +167,10 @@ def create_test_file():
     print("📄 Creating Test File...")
     
     test_content = b"""
-SecureCloud End-to-End Test File
+TSCloud End-to-End Test File
 ================================
 
-This file tests the complete SecureCloud pipeline:
+This file tests the complete TSCloud pipeline:
 1. File reading and processing
 2. Compression with Zstandard
 3. Chunking into manageable pieces
@@ -204,7 +204,7 @@ def cleanup_test_file(test_file):
 
 def main():
     """Run full integration test with real Telegram"""
-    print("🚀 SecureCloud Full Integration Test")
+    print("🚀 TSCloud Full Integration Test")
     print("=" * 70)
     
     config = load_config()
@@ -250,7 +250,7 @@ def main():
             print("✅ Real Telegram integration working")
             print("✅ Cryptographic security verified")
             print("✅ Cross-platform builds successful")
-            print("\n🚀 SecureCloud is ready for real-world use!")
+            print("\n🚀 TSCloud is ready for real-world use!")
             
             print("\n📝 Next Steps:")
             print("   1. Run the desktop application")

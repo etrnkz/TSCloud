@@ -1,6 +1,6 @@
 using System.Configuration;
 
-namespace SecureCloud.Desktop.Properties
+namespace TSCloud.Desktop.Properties
 {
     public sealed partial class Settings : ApplicationSettingsBase
     {

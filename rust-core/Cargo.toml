@@ -1,10 +1,10 @@
 [package]
-name = "secure-cloud-core"
+name = "ts-cloud-core"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
-name = "secure_cloud_core"
+name = "ts_cloud_core"
 crate-type = ["cdylib", "staticlib"]
 
 [dependencies]

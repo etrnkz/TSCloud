@@ -81,7 +81,7 @@ export default function Home() {
             <div className="flex items-center">
               <CloudIcon className="h-8 w-8 text-blue-600 dark:text-blue-400" />
               <h1 className="ml-2 text-xl font-bold text-gray-900 dark:text-white">
-                SecureCloud
+                TSCloud
               </h1>
               {isConnected && (
                 <div className="ml-4 flex items-center">

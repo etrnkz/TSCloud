@@ -1,4 +1,4 @@
-# SecureCloud Folder Sync Implementation
+# TSCloud Folder Sync Implementation
 
 ## ✅ What Has Been Implemented
 

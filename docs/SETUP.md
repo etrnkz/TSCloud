@@ -1,4 +1,4 @@
-# SecureCloud Setup Guide
+# TSCloud Setup Guide
 
 ## Prerequisites
 
@@ -29,7 +29,7 @@
 ### 1. Clone and Build Rust Core
 ```bash
 git clone <repository-url>
-cd SecureCloud
+cd TSCloud
 chmod +x build.sh
 ./build.sh
 ```
@@ -143,7 +143,7 @@ RUST_LOG=debug cargo run
 dotnet run --configuration Debug
 
 # Android
-adb logcat | grep SecureCloud
+adb logcat | grep TSCloud
 ```
 
 ## Performance Optimization

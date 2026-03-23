@@ -1,4 +1,4 @@
-use crate::{Result, SecureCloudError, crypto::{ChunkEncryptor, hash_data}, database::{FileRecord, ChunkRecord}};
+use crate::{Result, TSCloudError, crypto::{ChunkEncryptor, hash_data}, database::{FileRecord, ChunkRecord}};
 use std::fs::File;
 use std::io::{Read, BufReader};
 use std::path::Path;
@@ -86,7 +86,7 @@ impl FileProcessor {
         output_path: &Path,
     ) -> Result<()> {
         if chunks.len() != encrypted_chunks.len() {
-            return Err(SecureCloudError::Crypto(
+            return Err(TSCloudError::Crypto(
                 "Chunk count mismatch".to_string()
             ));
         }
@@ -97,14 +97,14 @@ impl FileProcessor {
             // Verify chunk hash
             let actual_hash = hash_data(encrypted_data);
             if actual_hash.as_slice() != chunk.hash {
-                return Err(SecureCloudError::Crypto(
+                return Err(TSCloudError::Crypto(
                     format!("Chunk {} hash verification failed", chunk.sequence)
                 ));
             }
 
             // Decrypt chunk
             let nonce: [u8; 24] = chunk.nonce.as_slice().try_into()
-                .map_err(|_| SecureCloudError::Crypto("Invalid nonce size".to_string()))?;
+                .map_err(|_| TSCloudError::Crypto("Invalid nonce size".to_string()))?;
             
             let decrypted_chunk = encryptor.decrypt_chunk(encrypted_data, &nonce)?;
             compressed_data.extend_from_slice(&decrypted_chunk);
@@ -123,11 +123,11 @@ impl FileProcessor {
         let mut compressed = Vec::new();
         {
             let mut encoder = Encoder::new(&mut compressed, self.compression_level)
-                .map_err(|e| SecureCloudError::Crypto(format!("Compression error: {}", e)))?;
+                .map_err(|e| TSCloudError::Crypto(format!("Compression error: {}", e)))?;
             encoder.write_all(data)
-                .map_err(|e| SecureCloudError::Crypto(format!("Compression write error: {}", e)))?;
+                .map_err(|e| TSCloudError::Crypto(format!("Compression write error: {}", e)))?;
             encoder.finish()
-                .map_err(|e| SecureCloudError::Crypto(format!("Compression finish error: {}", e)))?;
+                .map_err(|e| TSCloudError::Crypto(format!("Compression finish error: {}", e)))?;
         }
         Ok(compressed)
     }
@@ -136,9 +136,9 @@ impl FileProcessor {
         let mut decompressed = Vec::new();
         {
             let mut decoder = Decoder::new(compressed_data)
-                .map_err(|e| SecureCloudError::Crypto(format!("Decompression error: {}", e)))?;
+                .map_err(|e| TSCloudError::Crypto(format!("Decompression error: {}", e)))?;
             decoder.read_to_end(&mut decompressed)
-                .map_err(|e| SecureCloudError::Crypto(format!("Decompression read error: {}", e)))?;
+                .map_err(|e| TSCloudError::Crypto(format!("Decompression read error: {}", e)))?;
         }
         Ok(decompressed)
     }
@@ -234,11 +234,11 @@ impl StreamingProcessor {
         let mut compressed = Vec::new();
         {
             let mut encoder = Encoder::new(&mut compressed, self.compression_level)
-                .map_err(|e| SecureCloudError::Crypto(format!("Compression error: {}", e)))?;
+                .map_err(|e| TSCloudError::Crypto(format!("Compression error: {}", e)))?;
             encoder.write_all(data)
-                .map_err(|e| SecureCloudError::Crypto(format!("Compression write error: {}", e)))?;
+                .map_err(|e| TSCloudError::Crypto(format!("Compression write error: {}", e)))?;
             encoder.finish()
-                .map_err(|e| SecureCloudError::Crypto(format!("Compression finish error: {}", e)))?;
+                .map_err(|e| TSCloudError::Crypto(format!("Compression finish error: {}", e)))?;
         }
         Ok(compressed)
     }

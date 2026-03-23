@@ -1,6 +1,6 @@
 using System;
 
-namespace SecureCloud.Desktop.Models
+namespace TSCloud.Desktop.Models
 {
     public class VersionedFile
     {

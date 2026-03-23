@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "SecureCloud"
+rootProject.name = "TSCloud"
 include(":app")

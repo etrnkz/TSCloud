@@ -82,7 +82,7 @@ def get_recent_messages():
         return False
 
 def main():
-    print("🔐 SecureCloud Encryption Test")
+    print("🔐 TSCloud Encryption Test")
     print("=" * 40)
     
     # Test bot connection

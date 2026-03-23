@@ -14,7 +14,7 @@ pub use config::AppConfig;
 
 // Core error types
 #[derive(Debug, thiserror::Error)]
-pub enum SecureCloudError {
+pub enum TSCloudError {
     #[error("Cryptographic error: {0}")]
     Crypto(String),
     #[error("Database error: {0}")]
@@ -27,7 +27,7 @@ pub enum SecureCloudError {
     Serialization(String),
 }
 
-pub type Result<T> = std::result::Result<T, SecureCloudError>;
+pub type Result<T> = std::result::Result<T, TSCloudError>;
 
 // Core configuration
 #[derive(Debug, Clone)]

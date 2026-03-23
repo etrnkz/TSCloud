@@ -2,7 +2,7 @@ using System;
 using System.ComponentModel;
 using System.IO;
 
-namespace SecureCloud.Desktop.Models
+namespace TSCloud.Desktop.Models
 {
     public class SyncedFolder : INotifyPropertyChanged
     {

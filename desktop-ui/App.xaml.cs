@@ -5,9 +5,9 @@ using System.Windows;
 using System.Windows.Data;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using SecureCloud.Desktop.Themes;
+using TSCloud.Desktop.Themes;
 
-namespace SecureCloud.Desktop
+namespace TSCloud.Desktop
 {
     public partial class App : Application
     {
@@ -19,7 +19,7 @@ namespace SecureCloud.Desktop
             DispatcherUnhandledException += (sender, e) =>
             {
                 MessageBox.Show($"Unhandled Exception: {e.Exception.Message}\n\nDetails: {e.Exception}", 
-                    "SecureCloud Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    "TSCloud Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 e.Handled = true;
             };
         }
@@ -39,7 +39,7 @@ namespace SecureCloud.Desktop
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Startup Error: {ex.Message}\n\nDetails: {ex}", "SecureCloud Startup Error", 
+                MessageBox.Show($"Startup Error: {ex.Message}\n\nDetails: {ex}", "TSCloud Startup Error", 
                     MessageBoxButton.OK, MessageBoxImage.Error);
                 Shutdown(1);
             }

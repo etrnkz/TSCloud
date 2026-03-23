@@ -7,11 +7,11 @@ plugins {
 }
 
 android {
-    namespace = "com.securecloud.android"
+    namespace = "com.tscloud.android"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.securecloud.android"
+        applicationId = "com.tscloud.android"
         minSdk = 26
         targetSdk = 34
         versionCode = 1

@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# SecureCloud Build Script
+# TSCloud Build Script
 set -e
 
-echo "Building SecureCloud - Encrypted Cloud Storage System"
+echo "Building TSCloud - Encrypted Cloud Storage System"
 echo "=================================================="
 
 # Build Rust core

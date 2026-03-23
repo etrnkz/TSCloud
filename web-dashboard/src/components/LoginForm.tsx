@@ -54,7 +54,7 @@ export default function LoginForm({ onLogin }: LoginFormProps) {
             </div>
           </div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-            SecureCloud Dashboard
+            TSCloud Dashboard
           </h1>
           <p className="text-gray-600 dark:text-gray-400">
             Enter your master password to access your encrypted files

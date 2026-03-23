@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using System.Text.Json;
 using System.Timers;
 
-namespace SecureCloud.Desktop.Services
+namespace TSCloud.Desktop.Services
 {
     public class AnalyticsService : IDisposable
     {

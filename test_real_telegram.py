@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SecureCloud Real Telegram Integration Test
+TSCloud Real Telegram Integration Test
 Tests the actual Telegram Bot API with the provided token
 """
 
@@ -116,7 +116,7 @@ mod real_telegram_tests {{
 
 def main():
     """Run real Telegram integration tests"""
-    print("🚀 SecureCloud Real Telegram Integration Test")
+    print("🚀 TSCloud Real Telegram Integration Test")
     print("=" * 60)
     
     tests = [

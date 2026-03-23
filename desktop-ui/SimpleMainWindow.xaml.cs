@@ -13,16 +13,17 @@ using Newtonsoft.Json;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Runtime.InteropServices;
-using SecureCloud.Desktop.Models;
-using SecureCloud.Desktop.Services;
-using SecureCloud.Desktop.Themes;
+using TSCloud.Desktop.Models;
+using TSCloud.Desktop.Services;
+using TSCloud.Desktop.Themes;
+using TSCloud.Desktop.Dialogs;
 
-namespace SecureCloud.Desktop
+namespace TSCloud.Desktop
 {
     // P/Invoke declarations for Rust crypto functions
     public static class NativeCrypto
     {
-        private const string DllName = "secure_cloud_core";
+        private const string DllName = "ts_cloud_core";
 
         [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
         public static extern int sc_generate_salt(byte[] saltOut, uint saltLen);
@@ -194,7 +195,7 @@ namespace SecureCloud.Desktop
     }
 }
 
-namespace SecureCloud.Desktop
+namespace TSCloud.Desktop
 {
     public class FileItem : INotifyPropertyChanged
     {
@@ -230,8 +231,9 @@ namespace SecureCloud.Desktop
     public partial class SimpleMainWindow : Window
     {
         private readonly HttpClient _httpClient;
-        private readonly string _botToken = "8269631844:AAGULg5zlyNTTjlf35WtqRjhI9cQ5NztRdA";
-        private readonly long _channelId = -1003876315930;
+        private string _botToken = "";
+        private List<ChannelConfig> _channels = new();
+        private MultiChannelManager? _multiChannelManager;
         private readonly ObservableCollection<FileItem> _files = new();
         private readonly ObservableCollection<SyncedFolder> _syncedFolders = new();
         private readonly CryptoManager _crypto = new();
@@ -240,6 +242,7 @@ namespace SecureCloud.Desktop
         private readonly AnalyticsService _analyticsService = new();
         private bool _isConnected = false;
         private bool _isEncryptionEnabled = false;
+        private bool _isConfigured = false;
 
         public SimpleMainWindow()
         {
@@ -267,13 +270,208 @@ namespace SecureCloud.Desktop
             _analyticsService.AnalyticsUpdated += OnAnalyticsUpdated;
             
             // Update initial status
-            UpdateStatus("Ready - SecureCloud with encryption");
+            UpdateStatus("Ready - TSCloud starting up...");
             LogActivity("Application started");
             UpdateFileStats();
             UpdateFolderSyncStats();
             
-            // Prompt for encryption password
-            PromptForEncryptionPassword();
+            // Check for existing configuration or show setup dialog
+            _ = Task.Run(InitializeApplicationAsync);
+        }
+
+        private async Task InitializeApplicationAsync()
+        {
+            try
+            {
+                // Check for existing configuration
+                if (await LoadConfigurationAsync())
+                {
+                    _isConfigured = true;
+                    await Dispatcher.InvokeAsync(() =>
+                    {
+                        UpdateStatus("Configuration loaded - Ready to connect");
+                        LogActivity("✅ Configuration loaded from file");
+                        UpdateBotInfo();
+                    });
+                    
+                    // Initialize multi-channel manager with loaded config
+                    InitializeMultiChannelManager();
+                    
+                    // Prompt for encryption password
+                    await Dispatcher.InvokeAsync(PromptForEncryptionPassword);
+                }
+                else
+                {
+                    // Show setup dialog for first-time configuration
+                    await Dispatcher.InvokeAsync(ShowTelegramSetupDialog);
+                }
+            }
+            catch (Exception ex)
+            {
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    UpdateStatus($"❌ Initialization error: {ex.Message}");
+                    LogActivity($"❌ Initialization error: {ex.Message}");
+                    MessageBox.Show($"Failed to initialize TSCloud: {ex.Message}", 
+                        "Initialization Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                });
+            }
+        }
+
+        private async Task<bool> LoadConfigurationAsync()
+        {
+            try
+            {
+                var configPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), 
+                    "TSCloud", "user_config.json");
+                
+                if (!File.Exists(configPath))
+                    return false;
+
+                var configJson = await File.ReadAllTextAsync(configPath);
+                var config = JsonConvert.DeserializeObject<UserConfiguration>(configJson);
+                
+                if (config?.Telegram?.BotToken != null && config.Telegram.Channels?.Count > 0)
+                {
+                    _botToken = config.Telegram.BotToken;
+                    _channels = config.Telegram.Channels.Select(c => new ChannelConfig
+                    {
+                        Id = c.Id,
+                        Name = c.Name,
+                        Priority = c.Priority,
+                        IsActive = c.IsActive,
+                        MaxFileSize = c.MaxFileSize,
+                        Description = c.Description
+                    }).ToList();
+                    
+                    return true;
+                }
+                
+                return false;
+            }
+            catch (Exception ex)
+            {
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    LogActivity($"⚠️ Failed to load configuration: {ex.Message}");
+                });
+                return false;
+            }
+        }
+
+        private async Task<bool> SaveConfigurationAsync()
+        {
+            try
+            {
+                var configDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "TSCloud");
+                Directory.CreateDirectory(configDir);
+                
+                var configPath = Path.Combine(configDir, "user_config.json");
+                
+                var config = new UserConfiguration
+                {
+                    Telegram = new TelegramConfig
+                    {
+                        BotToken = _botToken,
+                        Channels = _channels.Select(c => new ChannelConfigData
+                        {
+                            Id = c.Id,
+                            Name = c.Name,
+                            Priority = c.Priority,
+                            IsActive = c.IsActive,
+                            MaxFileSize = c.MaxFileSize,
+                            Description = c.Description
+                        }).ToList()
+                    },
+                    LastUpdated = DateTime.Now
+                };
+                
+                var configJson = JsonConvert.SerializeObject(config, Formatting.Indented);
+                await File.WriteAllTextAsync(configPath, configJson);
+                
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LogActivity($"❌ Failed to save configuration: {ex.Message}");
+                return false;
+            }
+        }
+
+        private void ShowTelegramSetupDialog()
+        {
+            var setupDialog = new TelegramSetupDialog();
+            if (setupDialog.ShowDialog() == true && setupDialog.Result != null)
+            {
+                _botToken = setupDialog.Result.BotToken;
+                _channels = setupDialog.Result.Channels;
+                _isConfigured = true;
+                
+                // Save configuration
+                _ = Task.Run(SaveConfigurationAsync);
+                
+                // Initialize multi-channel manager
+                InitializeMultiChannelManager();
+                
+                UpdateStatus("Configuration saved - Ready to connect");
+                LogActivity("✅ Telegram bot configuration completed");
+                UpdateBotInfo();
+                
+                // Prompt for encryption password
+                PromptForEncryptionPassword();
+                
+                MessageBox.Show("Telegram bot configuration completed successfully!\n\n" +
+                              $"Bot Token: {_botToken.Substring(0, 20)}...\n" +
+                              $"Channels: {_channels.Count} configured\n\n" +
+                              "You can now start uploading files securely.", 
+                    "Setup Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                // User cancelled setup
+                UpdateStatus("❌ Setup cancelled - Application not configured");
+                LogActivity("⚠️ User cancelled Telegram setup");
+                
+                var result = MessageBox.Show("TSCloud requires Telegram bot configuration to function.\n\n" +
+                                           "Would you like to try the setup again?", 
+                    "Setup Required", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                
+                if (result == MessageBoxResult.Yes)
+                {
+                    ShowTelegramSetupDialog();
+                }
+                else
+                {
+                    Application.Current.Shutdown();
+                }
+            }
+        }
+
+        private void InitializeMultiChannelManager()
+        {
+            if (!string.IsNullOrEmpty(_botToken) && _channels.Count > 0)
+            {
+                _multiChannelManager?.Dispose();
+                _multiChannelManager = new MultiChannelManager(_httpClient, _botToken, _channels);
+                _multiChannelManager.ChannelHealthChanged += OnChannelHealthChanged;
+                _multiChannelManager.FileUploaded += OnFileUploadedToChannel;
+                
+                LogActivity("🤖 Multi-channel manager initialized with user configuration");
+            }
+        }
+
+        private void UpdateBotInfo()
+        {
+            if (!string.IsNullOrEmpty(_botToken) && _channels.Count > 0)
+            {
+                BotInfoText.Text = $"Bot: {_botToken.Substring(0, 20)}... (User Configured)";
+                ChannelInfoText.Text = $"Channels: {_channels.Count} configured ({_channels.Count(c => c.IsActive)} active)";
+            }
+            else
+            {
+                BotInfoText.Text = "Bot: Not configured";
+                ChannelInfoText.Text = "Channels: Not configured";
+            }
         }
 
         private void PromptForEncryptionPassword()
@@ -308,51 +506,71 @@ namespace SecureCloud.Desktop
 
         private void TestButton_Click(object sender, RoutedEventArgs e)
         {
-            MessageBox.Show("SecureCloud is working! 🎉\n\nYour Telegram bot is ready:\n@mtuconbot\nChannel: confess", 
-                "SecureCloud Test", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("TSCloud is working! 🎉\n\nYour Telegram bot is ready:\n@mtuconbot\nChannel: confess", 
+                "TSCloud Test", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         private async void InitializeButton_Click(object sender, RoutedEventArgs e)
         {
+            if (!_isConfigured || _multiChannelManager == null)
+            {
+                MessageBox.Show("Please configure your Telegram bot first.\n\nGo to Settings → Reconfigure Telegram Bot", 
+                    "Configuration Required", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
             try
             {
-                UpdateStatus("Testing Telegram connection...");
-                LogActivity("Testing bot connection...");
+                UpdateStatus("Testing multi-channel connections...");
+                LogActivity("Testing bot connection to all channels...");
                 
-                // Test bot connection
-                var response = await _httpClient.GetAsync($"https://api.telegram.org/bot{_botToken}/getMe");
-                if (response.IsSuccessStatusCode)
+                var healthyChannels = new List<string>();
+                var unhealthyChannels = new List<string>();
+
+                foreach (var channel in _channels.Where(c => c.IsActive))
                 {
-                    var content = await response.Content.ReadAsStringAsync();
-                    var result = JsonConvert.DeserializeObject<dynamic>(content);
-                    
-                    if (result?.ok == true)
+                    var isHealthy = await _multiChannelManager.TestChannelHealthAsync(channel.Id);
+                    if (isHealthy)
                     {
-                        var botName = result.result.first_name;
-                        var username = result.result.username;
-                        
-                        _isConnected = true;
-                        UpdateStatus($"✅ Connected to bot: {botName} (@{username})");
-                        LogActivity($"✅ Connected to bot: {botName} (@{username})");
-                        
-                        // Update bot info
-                        BotInfoText.Text = $"Bot: {botName} (@{username})";
-                        ChannelInfoText.Text = $"Channel: confess ({_channelId})";
-                        
-                        // Try to load existing files from channel
-                        await LoadExistingFilesAsync();
-                        
-                        MessageBox.Show($"Successfully connected to Telegram!\n\nBot: {botName} (@{username})\nChannel ID: {_channelId}", 
-                            "Connection Success", MessageBoxButton.OK, MessageBoxImage.Information);
+                        healthyChannels.Add($"{channel.Name} ({channel.Id})");
                     }
                     else
                     {
-                        _isConnected = false;
-                        UpdateStatus("❌ Bot connection failed");
-                        LogActivity("❌ Bot connection failed");
-                        MessageBox.Show("Failed to connect to Telegram bot", "Connection Error", 
-                            MessageBoxButton.OK, MessageBoxImage.Error);
+                        unhealthyChannels.Add($"{channel.Name} ({channel.Id})");
                     }
+                }
+
+                if (healthyChannels.Count > 0)
+                {
+                    _isConnected = true;
+                    var statusMessage = $"✅ Connected to {healthyChannels.Count}/{_channels.Count} channels";
+                    UpdateStatus(statusMessage);
+                    LogActivity(statusMessage);
+                    
+                    // Update channel info
+                    UpdateBotInfo();
+                    
+                    var message = $"Multi-channel connection established!\n\n" +
+                                 $"Healthy Channels ({healthyChannels.Count}):\n" +
+                                 string.Join("\n", healthyChannels.Select(c => $"✅ {c}"));
+                    
+                    if (unhealthyChannels.Count > 0)
+                    {
+                        message += $"\n\nUnhealthy Channels ({unhealthyChannels.Count}):\n" +
+                                  string.Join("\n", unhealthyChannels.Select(c => $"❌ {c}"));
+                    }
+                    
+                    message += $"\n\nRedundancy: {(healthyChannels.Count >= 2 ? "✅ Enabled" : "⚠️ Limited")}";
+                    
+                    MessageBox.Show(message, "Multi-Channel Connection", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                else
+                {
+                    _isConnected = false;
+                    UpdateStatus("❌ No channels available");
+                    LogActivity("❌ All channels are unhealthy");
+                    MessageBox.Show("Failed to connect to any channels. Please check your configuration.", 
+                        "Connection Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
             catch (Exception ex)
@@ -367,6 +585,13 @@ namespace SecureCloud.Desktop
 
         private async void AddFileButton_Click(object sender, RoutedEventArgs e)
         {
+            if (!_isConfigured)
+            {
+                MessageBox.Show("Please configure your Telegram bot first.\n\nGo to Settings → Reconfigure Telegram Bot", 
+                    "Configuration Required", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
             if (!_isConnected)
             {
                 MessageBox.Show("Please initialize the connection first by clicking 'Initialize'", 
@@ -388,6 +613,18 @@ namespace SecureCloud.Desktop
 
         private async Task UploadFileAsync(string filePath, bool isAutoSync = false)
         {
+            if (_multiChannelManager == null)
+            {
+                var syncPrefix = isAutoSync ? "🔄 Auto-sync: " : "";
+                LogActivity($"❌ {syncPrefix}Multi-channel manager not initialized");
+                if (!isAutoSync)
+                {
+                    MessageBox.Show("Multi-channel manager not initialized. Please check your configuration.", 
+                        "Configuration Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+                return;
+            }
+
             try
             {
                 var fileName = Path.GetFileName(filePath);
@@ -416,7 +653,7 @@ namespace SecureCloud.Desktop
                         fileHash = _crypto.HashData(originalData);
                         
                         var syncIndicator = isAutoSync ? "🔄🔐" : "🔐";
-                        uploadCaption = $"{syncIndicator} SecureCloud Encrypted: {fileName} " +
+                        uploadCaption = $"{syncIndicator} TSCloud Encrypted: {fileName} " +
                                       $"(Original: {FormatBytes(originalData.Length)}, " +
                                       $"Encrypted: {FormatBytes(encryptedData.Length)})";
                         
@@ -427,103 +664,86 @@ namespace SecureCloud.Desktop
                         LogActivity($"❌ {syncPrefix}Encryption failed, uploading without encryption");
                         uploadData = originalData;
                         var syncIndicator = isAutoSync ? "🔄⚠️" : "⚠️";
-                        uploadCaption = $"{syncIndicator} SecureCloud (Unencrypted): {fileName} ({FormatBytes(originalData.Length)})";
+                        uploadCaption = $"{syncIndicator} TSCloud (Unencrypted): {fileName} ({FormatBytes(originalData.Length)})";
                     }
                 }
                 else
                 {
                     uploadData = originalData;
                     var syncIndicator = isAutoSync ? "🔄⚠️" : "⚠️";
-                    uploadCaption = $"{syncIndicator} SecureCloud (Unencrypted): {fileName} ({FormatBytes(originalData.Length)})";
+                    uploadCaption = $"{syncIndicator} TSCloud (Unencrypted): {fileName} ({FormatBytes(originalData.Length)})";
                     LogActivity($"⚠️ {syncPrefix}Uploading without encryption");
                 }
 
-                UpdateStatus($"Uploading {fileName}...");
-                LogActivity($"📤 {syncPrefix}Uploading to Telegram...");
+                UpdateStatus($"Uploading {fileName} to multiple channels...");
+                LogActivity($"📤 {syncPrefix}Uploading to multiple channels with redundancy...");
                 
-                // Create multipart form data
-                using var form = new MultipartFormDataContent();
-                form.Add(new StringContent(_channelId.ToString()), "chat_id");
-                form.Add(new ByteArrayContent(uploadData), "document", $"{fileName}.encrypted");
-                form.Add(new StringContent(uploadCaption), "caption");
+                // Upload with redundancy
+                var locations = await _multiChannelManager.UploadFileWithRedundancyAsync(uploadData, fileName, Guid.NewGuid().ToString());
                 
-                var response = await _httpClient.PostAsync($"https://api.telegram.org/bot{_botToken}/sendDocument", form);
-                
-                if (response.IsSuccessStatusCode)
+                if (locations.Count > 0)
                 {
-                    var content = await response.Content.ReadAsStringAsync();
-                    var result = JsonConvert.DeserializeObject<dynamic>(content);
+                    var primaryLocation = locations.First(l => l.IsPrimary);
                     
-                    if (result?.ok == true)
+                    // Add to file list
+                    var fileItem = new FileItem
                     {
-                        var messageId = (long)result.result.message_id;
-                        var uploadedSize = (long)result.result.document.file_size;
-                        var fileId = (string)result.result.document.file_id;
-                        
-                        // Add to file list
-                        var fileItem = new FileItem
-                        {
-                            FileName = fileName,
-                            Size = originalData.Length,
-                            EncryptedSize = uploadData.Length,
-                            UploadedAt = DateTime.Now,
-                            MessageId = messageId,
-                            FileId = fileId,
-                            FilePath = filePath,
-                            Nonce = nonce ?? Array.Empty<byte>(),
-                            FileHash = fileHash ?? Array.Empty<byte>()
-                        };
-                        
-                        _files.Add(fileItem);
-                        UpdateFileStats();
-                        
-                        // Record analytics
-                        var uploadTime = TimeSpan.FromSeconds(2); // Approximate upload time
-                        _analyticsService.RecordFileUpload(originalData.Length, uploadTime, fileItem.IsEncrypted);
-                        
-                        // Create version if file already exists
-                        if (File.Exists(filePath))
-                        {
-                            var changeDescription = isAutoSync ? "Auto-sync update" : "Manual upload";
-                            await _versioningService.CreateVersionAsync(
-                                filePath, messageId, fileId, nonce ?? Array.Empty<byte>(), 
-                                fileHash ?? Array.Empty<byte>(), originalData.Length, uploadData.Length, changeDescription);
-                        }
-                        
-                        var encryptionStatus = fileItem.IsEncrypted ? "🔐 Encrypted" : "⚠️ Unencrypted";
-                        var syncStatus = isAutoSync ? " (Auto-sync)" : "";
-                        UpdateStatus($"✅ Uploaded {fileName} ({encryptionStatus}){syncStatus}");
-                        LogActivity($"✅ {syncPrefix}Uploaded {fileName} - {encryptionStatus} (Message ID: {messageId})");
-                        
-                        if (!isAutoSync)
-                        {
-                            MessageBox.Show($"File uploaded successfully!\n\n" +
-                                          $"File: {fileName}\n" +
-                                          $"Original Size: {FormatBytes(originalData.Length)}\n" +
-                                          $"Uploaded Size: {FormatBytes(uploadedSize)}\n" +
-                                          $"Encryption: {(fileItem.IsEncrypted ? "✅ Enabled" : "❌ Disabled")}\n" +
-                                          $"Message ID: {messageId}", 
-                                "Upload Success", MessageBoxButton.OK, MessageBoxImage.Information);
-                        }
+                        FileName = fileName,
+                        Size = originalData.Length,
+                        EncryptedSize = uploadData.Length,
+                        UploadedAt = DateTime.Now,
+                        MessageId = primaryLocation.MessageId,
+                        FileId = primaryLocation.TelegramFileId,
+                        FilePath = filePath,
+                        Nonce = nonce ?? Array.Empty<byte>(),
+                        FileHash = fileHash ?? Array.Empty<byte>()
+                    };
+                    
+                    _files.Add(fileItem);
+                    UpdateFileStats();
+                    
+                    // Record analytics
+                    var uploadTime = TimeSpan.FromSeconds(2); // Approximate upload time
+                    _analyticsService.RecordFileUpload(originalData.Length, uploadTime, fileItem.IsEncrypted);
+                    
+                    // Create version if file already exists
+                    if (File.Exists(filePath))
+                    {
+                        var changeDescription = isAutoSync ? "Auto-sync update" : "Manual upload";
+                        await _versioningService.CreateVersionAsync(
+                            filePath, primaryLocation.MessageId, primaryLocation.TelegramFileId, nonce ?? Array.Empty<byte>(), 
+                            fileHash ?? Array.Empty<byte>(), originalData.Length, uploadData.Length, changeDescription);
                     }
-                    else
+                    
+                    var encryptionStatus = fileItem.IsEncrypted ? "🔐 Encrypted" : "⚠️ Unencrypted";
+                    var syncStatus = isAutoSync ? " (Auto-sync)" : "";
+                    var redundancyInfo = $" [{locations.Count} copies]";
+                    UpdateStatus($"✅ Uploaded {fileName} ({encryptionStatus}){syncStatus}{redundancyInfo}");
+                    LogActivity($"✅ {syncPrefix}Uploaded {fileName} - {encryptionStatus} to {locations.Count} channels");
+                    
+                    if (!isAutoSync)
                     {
-                        UpdateStatus("❌ Upload failed");
-                        LogActivity($"❌ {syncPrefix}Upload failed - API error");
-                        if (!isAutoSync)
-                        {
-                            MessageBox.Show("Upload failed", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                        }
+                        var channelList = string.Join(", ", locations.Select(l => 
+                            _channels.FirstOrDefault(c => c.Id == l.ChannelId)?.Name ?? l.ChannelId.ToString()));
+                        
+                        MessageBox.Show($"File uploaded successfully with redundancy!\n\n" +
+                                      $"File: {fileName}\n" +
+                                      $"Original Size: {FormatBytes(originalData.Length)}\n" +
+                                      $"Encrypted Size: {FormatBytes(uploadData.Length)}\n" +
+                                      $"Encryption: {(fileItem.IsEncrypted ? "✅ Enabled" : "❌ Disabled")}\n" +
+                                      $"Copies: {locations.Count}\n" +
+                                      $"Channels: {channelList}\n" +
+                                      $"Primary Message ID: {primaryLocation.MessageId}", 
+                            "Upload Success", MessageBoxButton.OK, MessageBoxImage.Information);
                     }
                 }
                 else
                 {
-                    UpdateStatus($"❌ HTTP Error: {response.StatusCode}");
-                    LogActivity($"❌ {syncPrefix}Upload failed - HTTP {response.StatusCode}");
+                    UpdateStatus("❌ Upload failed to all channels");
+                    LogActivity($"❌ {syncPrefix}Upload failed to all channels");
                     if (!isAutoSync)
                     {
-                        MessageBox.Show($"Upload failed: {response.StatusCode}", "Error", 
-                            MessageBoxButton.OK, MessageBoxImage.Error);
+                        MessageBox.Show("Upload failed to all channels", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                     }
                 }
             }
@@ -542,14 +762,167 @@ namespace SecureCloud.Desktop
 
         private void SettingsButton_Click(object sender, RoutedEventArgs e)
         {
-            var settings = $"SecureCloud Settings\n\n" +
-                          $"Bot Token: {_botToken.Substring(0, 20)}...\n" +
-                          $"Channel ID: {_channelId}\n" +
-                          $"Connection Status: {(_isConnected ? "Connected" : "Not Connected")}\n" +
-                          $"Files Tracked: {_files.Count}\n" +
-                          $"Total Storage: {FormatBytes(_files.Sum(f => f.Size))}";
+            var settingsMenu = new ContextMenu();
             
-            MessageBox.Show(settings, "Settings", MessageBoxButton.OK, MessageBoxImage.Information);
+            // View Current Settings
+            var viewSettingsItem = new MenuItem { Header = "📋 View Current Settings" };
+            viewSettingsItem.Click += (s, args) =>
+            {
+                var settings = $"TSCloud Configuration\n\n" +
+                              $"Bot Token: {(_isConfigured ? _botToken.Substring(0, 20) + "..." : "Not configured")}\n" +
+                              $"Channels: {_channels.Count} configured ({_channels.Count(c => c.IsActive)} active)\n" +
+                              $"Connection Status: {(_isConnected ? "Connected" : "Not Connected")}\n" +
+                              $"Encryption: {(_isEncryptionEnabled ? "Enabled" : "Disabled")}\n" +
+                              $"Files Tracked: {_files.Count}\n" +
+                              $"Total Storage: {FormatBytes(_files.Sum(f => f.Size))}\n" +
+                              $"Synced Folders: {_syncedFolders.Count}\n\n" +
+                              "Channel Details:\n";
+                
+                foreach (var channel in _channels)
+                {
+                    var status = channel.IsActive ? "Active" : "Inactive";
+                    settings += $"• {channel.Name} (Priority {channel.Priority}): {status}\n";
+                }
+                
+                MessageBox.Show(settings, "Current Settings", MessageBoxButton.OK, MessageBoxImage.Information);
+            };
+            settingsMenu.Items.Add(viewSettingsItem);
+            
+            settingsMenu.Items.Add(new Separator());
+            
+            // Reconfigure Telegram Bot
+            var reconfigureItem = new MenuItem { Header = "🤖 Reconfigure Telegram Bot" };
+            reconfigureItem.Click += (s, args) =>
+            {
+                var result = MessageBox.Show("This will replace your current Telegram bot configuration.\n\n" +
+                                           "Are you sure you want to continue?", 
+                    "Reconfigure Bot", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                
+                if (result == MessageBoxResult.Yes)
+                {
+                    ShowTelegramSetupDialog();
+                }
+            };
+            settingsMenu.Items.Add(reconfigureItem);
+            
+            // Reset Encryption
+            var resetEncryptionItem = new MenuItem { Header = "🔐 Reset Encryption Password" };
+            resetEncryptionItem.Click += (s, args) =>
+            {
+                var result = MessageBox.Show("This will reset your encryption password.\n\n" +
+                                           "You will need to re-enter your password to decrypt existing files.\n\n" +
+                                           "Continue?", 
+                    "Reset Encryption", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                
+                if (result == MessageBoxResult.Yes)
+                {
+                    _isEncryptionEnabled = false;
+                    PromptForEncryptionPassword();
+                }
+            };
+            settingsMenu.Items.Add(resetEncryptionItem);
+            
+            settingsMenu.Items.Add(new Separator());
+            
+            // Export Configuration
+            var exportConfigItem = new MenuItem { Header = "📤 Export Configuration" };
+            exportConfigItem.Click += async (s, args) =>
+            {
+                var saveDialog = new SaveFileDialog
+                {
+                    Title = "Export TSCloud Configuration",
+                    Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*",
+                    FileName = $"TSCloud_config_{DateTime.Now:yyyyMMdd}.json"
+                };
+                
+                if (saveDialog.ShowDialog() == true)
+                {
+                    try
+                    {
+                        var exportConfig = new
+                        {
+                            BotToken = _botToken,
+                            Channels = _channels.Select(c => new
+                            {
+                                c.Id,
+                                c.Name,
+                                c.Priority,
+                                c.IsActive,
+                                c.Description
+                            }),
+                            ExportedAt = DateTime.Now,
+                            Version = "1.0"
+                        };
+                        
+                        var json = JsonConvert.SerializeObject(exportConfig, Formatting.Indented);
+                        await File.WriteAllTextAsync(saveDialog.FileName, json);
+                        
+                        MessageBox.Show($"Configuration exported successfully!\n\nSaved to: {saveDialog.FileName}", 
+                            "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"Failed to export configuration: {ex.Message}", 
+                            "Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                }
+            };
+            settingsMenu.Items.Add(exportConfigItem);
+            
+            // Import Configuration
+            var importConfigItem = new MenuItem { Header = "📥 Import Configuration" };
+            importConfigItem.Click += async (s, args) =>
+            {
+                var openDialog = new OpenFileDialog
+                {
+                    Title = "Import TSCloud Configuration",
+                    Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*"
+                };
+                
+                if (openDialog.ShowDialog() == true)
+                {
+                    try
+                    {
+                        var json = await File.ReadAllTextAsync(openDialog.FileName);
+                        var importConfig = JsonConvert.DeserializeObject<dynamic>(json);
+                        
+                        if (importConfig?.BotToken != null && importConfig.Channels != null)
+                        {
+                            var result = MessageBox.Show("This will replace your current configuration.\n\n" +
+                                                       "Are you sure you want to continue?", 
+                                "Import Configuration", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                            
+                            if (result == MessageBoxResult.Yes)
+                            {
+                                _botToken = importConfig.BotToken;
+                                _channels = JsonConvert.DeserializeObject<List<ChannelConfig>>(
+                                    importConfig.Channels.ToString()) ?? new List<ChannelConfig>();
+                                
+                                await SaveConfigurationAsync();
+                                InitializeMultiChannelManager();
+                                UpdateBotInfo();
+                                
+                                MessageBox.Show("Configuration imported successfully!", 
+                                    "Import Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+                            }
+                        }
+                        else
+                        {
+                            MessageBox.Show("Invalid configuration file format.", 
+                                "Import Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"Failed to import configuration: {ex.Message}", 
+                            "Import Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                }
+            };
+            settingsMenu.Items.Add(importConfigItem);
+            
+            settingsMenu.PlacementTarget = sender as Button;
+            settingsMenu.IsOpen = true;
         }
 
         private async void DownloadButton_Click(object sender, RoutedEventArgs e)
@@ -698,7 +1071,7 @@ namespace SecureCloud.Desktop
         {
             Dispatcher.Invoke(() =>
             {
-                Title = $"SecureCloud - {message}";
+                Title = $"TSCloud - {message}";
                 StatusText.Text = $"Status: {message}";
             });
         }
@@ -758,6 +1131,7 @@ namespace SecureCloud.Desktop
             _folderSyncService?.Dispose();
             _versioningService?.Dispose();
             _analyticsService?.Dispose();
+            _multiChannelManager?.Dispose();
             _httpClient?.Dispose();
             base.OnClosed(e);
         }
@@ -823,7 +1197,7 @@ namespace SecureCloud.Desktop
         {
             var folderDialog = new System.Windows.Forms.FolderBrowserDialog
             {
-                Description = "Select folder to sync with SecureCloud",
+                Description = "Select folder to sync with TSCloud",
                 ShowNewFolderButton = false
             };
 
@@ -1027,6 +1401,7 @@ namespace SecureCloud.Desktop
         {
             var summary = _analyticsService.GetSummary();
             var health = _analyticsService.GetSystemHealth();
+            var channelStats = _multiChannelManager?.GetChannelStatistics() ?? new Dictionary<long, ChannelHealth>();
             
             var analyticsInfo = $"Analytics Summary (Last 30 Days)\n\n" +
                               $"Files Uploaded: {summary.TotalFilesUploaded}\n" +
@@ -1040,10 +1415,74 @@ namespace SecureCloud.Desktop
                               $"Avg Download Speed: {FormatBytes((long)summary.AverageDownloadSpeed)}/s\n\n" +
                               $"System Health: {health.OverallHealth}\n" +
                               $"Security Events: {health.CriticalEventsCount} critical\n" +
-                              $"Last Updated: {health.LastUpdated:HH:mm:ss}";
+                              $"Last Updated: {health.LastUpdated:HH:mm:ss}\n\n" +
+                              $"Channel Health:\n";
+            
+            if (_channels.Count > 0 && channelStats.Count > 0)
+            {
+                foreach (var channel in _channels)
+                {
+                    if (channelStats.TryGetValue(channel.Id, out var channelHealth))
+                    {
+                        var status = channelHealth.IsHealthy ? "✅ Healthy" : "❌ Unhealthy";
+                        var errorInfo = channelHealth.ErrorCount > 0 ? $" ({channelHealth.ErrorCount} errors)" : "";
+                        analyticsInfo += $"• {channel.Name}: {status}{errorInfo}\n";
+                    }
+                }
+            }
+            else
+            {
+                analyticsInfo += "• No channels configured\n";
+            }
             
             MessageBox.Show(analyticsInfo, "Analytics Dashboard", 
                 MessageBoxButton.OK, MessageBoxImage.Information);
         }
+
+        // Multi-channel event handlers
+        private void OnChannelHealthChanged(object? sender, ChannelHealthChangedEventArgs e)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                var channel = _channels.FirstOrDefault(c => c.Id == e.ChannelId);
+                var channelName = channel?.Name ?? e.ChannelId.ToString();
+                var status = e.IsHealthy ? "✅ Healthy" : "❌ Unhealthy";
+                var errorInfo = !string.IsNullOrEmpty(e.Error) ? $" - {e.Error}" : "";
+                
+                LogActivity($"📡 Channel {channelName}: {status}{errorInfo}");
+            });
+        }
+
+        private void OnFileUploadedToChannel(object? sender, FileUploadedEventArgs e)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                var copyType = e.Location.IsPrimary ? "Primary" : "Backup";
+                LogActivity($"📤 {copyType} copy uploaded to {e.ChannelName} (Message ID: {e.Location.MessageId})");
+            });
+        }
+    }
+
+    // Configuration data classes
+    public class UserConfiguration
+    {
+        public TelegramConfig? Telegram { get; set; }
+        public DateTime LastUpdated { get; set; }
+    }
+
+    public class TelegramConfig
+    {
+        public string BotToken { get; set; } = "";
+        public List<ChannelConfigData> Channels { get; set; } = new();
+    }
+
+    public class ChannelConfigData
+    {
+        public long Id { get; set; }
+        public string Name { get; set; } = "";
+        public int Priority { get; set; }
+        public bool IsActive { get; set; }
+        public long MaxFileSize { get; set; } = 52428800; // 50MB
+        public string Description { get; set; } = "";
     }
 }

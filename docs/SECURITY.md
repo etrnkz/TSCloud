@@ -1,8 +1,8 @@
-# SecureCloud Security Model
+# TSCloud Security Model
 
 ## Overview
 
-SecureCloud implements a zero-knowledge architecture where all encryption and decryption operations occur locally on user devices. The system is designed so that even with full access to Telegram servers and network traffic, an attacker cannot decrypt user files without the master password.
+TSCloud implements a zero-knowledge architecture where all encryption and decryption operations occur locally on user devices. The system is designed so that even with full access to Telegram servers and network traffic, an attacker cannot decrypt user files without the master password.
 
 ## Cryptographic Primitives
 

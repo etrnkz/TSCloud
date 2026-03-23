@@ -1,5 +1,5 @@
 use crate::{
-    Result, SecureCloudError, Config,
+    Result, TSCloudError, Config,
     crypto::{MasterKey, ChunkEncryptor},
     database::{Database, ChunkRecord},
     file_processor::FileProcessor,
@@ -44,14 +44,13 @@ impl StorageEngine {
             // Use Bot API
             TelegramClient::new(
                 bot_token.clone(),
-                self.config.telegram_channel_id,
                 self.config.telegram_api_id,
                 self.config.telegram_api_hash.clone(),
                 None,
             ).await?
         } else {
             // Use regular Telegram API (not implemented in this version)
-            return Err(SecureCloudError::Telegram(
+            return Err(TSCloudError::Telegram(
                 "Regular Telegram API not implemented. Please use Bot API with bot_token.".to_string()
             ));
         };
@@ -114,7 +113,7 @@ impl StorageEngine {
     async fn upload_chunks(&self, chunks: &[ChunkRecord]) -> Result<usize> {
         let mut telegram_client_guard = self.telegram_client.write().await;
         let client = telegram_client_guard.as_mut()
-            .ok_or_else(|| SecureCloudError::Telegram("Telegram client not initialized".to_string()))?;
+            .ok_or_else(|| TSCloudError::Telegram("Telegram client not initialized".to_string()))?;
 
         let mut uploaded_count = 0;
         for chunk in chunks {
@@ -127,7 +126,7 @@ impl StorageEngine {
             let encrypted_data = vec![0u8; chunk.compressed_size as usize];
             
             // Upload to Telegram
-            match client.upload_chunk(encrypted_data, chunk.id.clone()).await {
+            match client.upload_chunk(encrypted_data, chunk.id.clone(), self.config.telegram_channel_id).await {
                 Ok(message_id) => {
                     let now = chrono::Utc::now().timestamp();
                     let db = self.database.write().await;
@@ -148,12 +147,12 @@ impl StorageEngine {
     async fn download_chunks(&self, chunks: &[ChunkRecord]) -> Result<Vec<Vec<u8>>> {
         let telegram_client_guard = self.telegram_client.read().await;
         let client = telegram_client_guard.as_ref()
-            .ok_or_else(|| SecureCloudError::Telegram("Telegram client not initialized".to_string()))?;
+            .ok_or_else(|| TSCloudError::Telegram("Telegram client not initialized".to_string()))?;
         
         let mut encrypted_chunks = Vec::new();
         for chunk in chunks {
             let message_id = chunk.telegram_message_id
-                .ok_or_else(|| SecureCloudError::Telegram("Chunk not uploaded".to_string()))?;
+                .ok_or_else(|| TSCloudError::Telegram("Chunk not uploaded".to_string()))?;
 
             match client.download_chunk(message_id).await {
                 Ok(data) => encrypted_chunks.push(data),

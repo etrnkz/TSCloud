@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SecureCloud Real Upload Test
+TSCloud Real Upload Test
 Tests actual file upload to Telegram using the real bot token and channel
 """
 
@@ -54,7 +54,7 @@ def test_file_upload():
     print("📤 Testing File Upload...")
     
     # Create a test file
-    test_content = b"SecureCloud Test File - This is encrypted chunk data!"
+    test_content = b"TSCloud Test File - This is encrypted chunk data!"
     
     try:
         # Upload as document
@@ -63,7 +63,7 @@ def test_file_upload():
         }
         data = {
             'chat_id': CHANNEL_ID,
-            'caption': 'SecureCloud Test Upload'
+            'caption': 'TSCloud Test Upload'
         }
         
         response = requests.post(f"{BASE_URL}/sendDocument", 
@@ -213,7 +213,7 @@ def cleanup_test_message(message_id):
 
 def main():
     """Run real Telegram upload/download tests"""
-    print("🚀 SecureCloud Real Telegram Upload Test")
+    print("🚀 TSCloud Real Telegram Upload Test")
     print("=" * 60)
     print(f"Bot: @mtuconbot ({BOT_TOKEN[:20]}...)")
     print(f"Channel ID: {CHANNEL_ID}")
@@ -254,7 +254,7 @@ def main():
         print("✅ Your Telegram bot is fully functional")
         print("✅ Channel access is working")
         print("✅ File upload/download works")
-        print("✅ Ready for SecureCloud integration")
+        print("✅ Ready for TSCloud integration")
         
         return True
         

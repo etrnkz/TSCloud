@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test script to demonstrate SecureCloud folder syncing functionality
+Test script to demonstrate TSCloud folder syncing functionality
 """
 
 import os
@@ -14,7 +14,7 @@ def create_test_folder_structure():
     print("🗂️ Creating test folder structure...")
     
     # Create temporary directory
-    test_dir = Path(tempfile.mkdtemp(prefix="SecureCloud_Test_"))
+    test_dir = Path(tempfile.mkdtemp(prefix="TSCloud_Test_"))
     print(f"📁 Test directory: {test_dir}")
     
     # Create subdirectories
@@ -24,11 +24,11 @@ def create_test_folder_structure():
     
     # Create test files
     test_files = [
-        ("documents/readme.txt", "This is a test document for SecureCloud folder sync."),
+        ("documents/readme.txt", "This is a test document for TSCloud folder sync."),
         ("documents/notes.md", "# Test Notes\n\nThis file will be automatically synced."),
         ("images/test.txt", "Placeholder for image file"),
-        ("code/main.py", "print('Hello from SecureCloud auto-sync!')"),
-        ("code/config.json", '{"app": "SecureCloud", "version": "1.0"}'),
+        ("code/main.py", "print('Hello from TSCloud auto-sync!')"),
+        ("code/config.json", '{"app": "TSCloud", "version": "1.0"}'),
     ]
     
     for file_path, content in test_files:
@@ -45,7 +45,7 @@ def simulate_file_changes(test_dir):
     changes = [
         ("documents/new_file.txt", "This is a new file that should auto-sync."),
         ("code/update.py", "# This file was added after folder sync started\nprint('Auto-sync test')"),
-        ("documents/readme.txt", "This is an UPDATED test document for SecureCloud folder sync."),
+        ("documents/readme.txt", "This is an UPDATED test document for TSCloud folder sync."),
     ]
     
     for file_path, content in changes:
@@ -63,14 +63,14 @@ def cleanup_test_folder(test_dir):
         print(f"❌ Error cleaning up: {e}")
 
 def main():
-    print("🔄 SecureCloud Folder Sync Test")
+    print("🔄 TSCloud Folder Sync Test")
     print("=" * 40)
     
     # Create test folder
     test_dir = create_test_folder_structure()
     
     print(f"\n📋 Test Instructions:")
-    print(f"1. Run the SecureCloud desktop app: dotnet run --project desktop-ui")
+    print(f"1. Run the TSCloud desktop app: dotnet run --project desktop-ui")
     print(f"2. Click 'Initialize' to connect to Telegram")
     print(f"3. Click 'Add Folder' and select: {test_dir}")
     print(f"4. Watch the activity log for folder sync messages")

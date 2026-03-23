@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using SecureCloud.Desktop.Models;
+using TSCloud.Desktop.Models;
 
-namespace SecureCloud.Desktop.Services
+namespace TSCloud.Desktop.Services
 {
     public class FolderSyncService : IDisposable
     {

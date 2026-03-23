@@ -3,10 +3,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using SecureCloud.Desktop.Models;
+using TSCloud.Desktop.Models;
 using System.Text.Json;
 
-namespace SecureCloud.Desktop.Services
+namespace TSCloud.Desktop.Services
 {
     public class VersioningService : IDisposable
     {

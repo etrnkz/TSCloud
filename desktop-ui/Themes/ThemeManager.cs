@@ -2,7 +2,7 @@ using System;
 using System.Windows;
 using System.Windows.Media;
 
-namespace SecureCloud.Desktop.Themes
+namespace TSCloud.Desktop.Themes
 {
     public enum AppTheme
     {

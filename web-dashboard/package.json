@@ -1,7 +1,7 @@
 {
-  "name": "securecloud-web-dashboard",
+  "name": "tscloud-web-dashboard",
   "version": "1.0.0",
-  "description": "SecureCloud Web Dashboard - Encrypted Cloud Storage Management",
+  "description": "TSCloud Web Dashboard - Encrypted Cloud Storage Management",
   "private": true,
   "scripts": {
     "dev": "next dev",

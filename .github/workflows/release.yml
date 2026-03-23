@@ -1,0 +1,354 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.0.0)'
+        required: true
+        type: string
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-rust:
+    name: Build Rust Core
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            rust-core/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          
+      - name: Build Rust core
+        run: |
+          cd rust-core
+          cargo build --release
+          cargo test --release
+          
+      - name: Upload Rust artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: rust-core
+          path: rust-core/target/release/
+
+  build-desktop:
+    name: Build Desktop App
+    runs-on: windows-latest
+    needs: build-rust
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: '8.0.x'
+          
+      - name: Download Rust artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: rust-core
+          path: rust-core/target/release/
+          
+      - name: Restore dependencies
+        run: |
+          cd desktop-ui
+          dotnet restore
+          
+      - name: Build desktop app
+        run: |
+          cd desktop-ui
+          dotnet build --configuration Release --no-restore
+          
+      - name: Test desktop app
+        run: |
+          cd desktop-ui
+          dotnet test --configuration Release --no-build --verbosity normal
+          
+      - name: Create portable package
+        run: |
+          cd desktop-ui/bin/Release/net8.0-windows
+          Compress-Archive -Path * -DestinationPath TSCloud-Portable.zip
+          
+      - name: Upload desktop artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: desktop-app
+          path: desktop-ui/bin/Release/net8.0-windows/TSCloud-Portable.zip
+
+  build-android:
+    name: Build Android App
+    runs-on: ubuntu-latest
+    if: false  # Disable for now, enable when Android build is ready
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v2
+        
+      - name: Cache Gradle packages
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+            
+      - name: Build Android app
+        run: |
+          cd android-client
+          ./gradlew assembleRelease
+          
+      - name: Upload Android artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: android-app
+          path: android-client/app/build/outputs/apk/release/app-release.apk
+
+  build-web:
+    name: Build Web Dashboard
+    runs-on: ubuntu-latest
+    if: false  # Disable for now, enable when web build is ready
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: web-dashboard/package-lock.json
+          
+      - name: Install dependencies
+        run: |
+          cd web-dashboard
+          npm ci
+          
+      - name: Build web dashboard
+        run: |
+          cd web-dashboard
+          npm run build
+          
+      - name: Test web dashboard
+        run: |
+          cd web-dashboard
+          npm run test
+          
+      - name: Create web package
+        run: |
+          cd web-dashboard
+          tar -czf TSCloud-Web.tar.gz .next public package.json
+          
+      - name: Upload web artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: web-dashboard
+          path: web-dashboard/TSCloud-Web.tar.gz
+
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [build-rust, build-desktop]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+          
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts/
+          
+      - name: Prepare release files
+        run: |
+          mkdir -p release/
+          
+          # Copy desktop app
+          if [ -f "artifacts/desktop-app/TSCloud-Portable.zip" ]; then
+            cp "artifacts/desktop-app/TSCloud-Portable.zip" "release/TSCloud-Portable-${{ steps.version.outputs.version }}.zip"
+          fi
+          
+          # Copy Android app (if available)
+          if [ -f "artifacts/android-app/app-release.apk" ]; then
+            cp "artifacts/android-app/app-release.apk" "release/TSCloud-${{ steps.version.outputs.version }}.apk"
+          fi
+          
+          # Copy web dashboard (if available)
+          if [ -f "artifacts/web-dashboard/TSCloud-Web.tar.gz" ]; then
+            cp "artifacts/web-dashboard/TSCloud-Web.tar.gz" "release/TSCloud-Web-${{ steps.version.outputs.version }}.tar.gz"
+          fi
+          
+          # Create source archive
+          git archive --format=zip --prefix=TSCloud-${{ steps.version.outputs.version }}/ HEAD > "release/TSCloud-Source-${{ steps.version.outputs.version }}.zip"
+          
+      - name: Generate checksums
+        run: |
+          cd release/
+          sha256sum * > TSCloud-${{ steps.version.outputs.version }}-checksums.txt
+          
+      - name: Create installation guide
+        run: |
+          cat > release/INSTALLATION_GUIDE.md << 'EOF'
+          # TSCloud ${{ steps.version.outputs.version }} Installation Guide
+          
+          ## Windows Desktop Application
+          
+          ### Portable Version (Recommended)
+          1. Download `TSCloud-Portable-${{ steps.version.outputs.version }}.zip`
+          2. Extract to your preferred location
+          3. Run `TSCloud.Desktop.exe`
+          4. Follow the setup wizard
+          
+          ### System Requirements
+          - Windows 10/11 (64-bit)
+          - .NET 8.0 Runtime (will be installed automatically)
+          - 4GB RAM minimum
+          - 100MB free disk space
+          
+          ## First-Time Setup
+          
+          1. **Create Telegram Bot**
+             - Message @BotFather on Telegram
+             - Use /newbot command
+             - Save the bot token
+          
+          2. **Create Storage Channels**
+             - Create 2-3 private channels
+             - Add your bot as admin
+             - Get channel IDs using @userinfobot
+          
+          3. **Configure TSCloud**
+             - Launch the application
+             - Enter bot token and channel IDs
+             - Test connectivity
+             - Set encryption password
+          
+          4. **Start Using**
+             - Upload your first file
+             - Set up folder synchronization
+             - Explore advanced features
+          
+          ## Support
+          
+          For help with installation:
+          - Check documentation in repository
+          - Visit GitHub Issues
+          - Join our community Discord
+          EOF
+          
+      - name: Create quick start guide
+        run: |
+          cat > release/QUICK_START.md << 'EOF'
+          # TSCloud ${{ steps.version.outputs.version }} Quick Start Guide
+          
+          ## 🚀 Get Started in 5 Minutes
+          
+          ### Step 1: Download & Install
+          - **Windows**: Download and extract `TSCloud-Portable-${{ steps.version.outputs.version }}.zip`
+          
+          ### Step 2: Create Your Telegram Bot
+          1. Open Telegram and message [@BotFather](https://t.me/BotFather)
+          2. Send `/newbot` command
+          3. Choose a name: "My TSCloud Bot"
+          4. Choose a username: "myTSCloud_bot"
+          5. **Save the bot token** - you'll need it!
+          
+          ### Step 3: Create Storage Channels
+          1. In Telegram, create a new channel
+          2. Make it **Private** (very important!)
+          3. Add your bot as admin with "Post Messages" permission
+          4. Get the channel ID by forwarding a message to [@userinfobot](https://t.me/userinfobot)
+          5. Repeat for 2-3 channels for redundancy
+          
+          ### Step 4: Configure TSCloud
+          1. Launch TSCloud
+          2. Setup wizard will appear automatically
+          3. Enter your bot token
+          4. Add your channel IDs
+          5. Test the connection
+          6. Set your encryption password
+          7. Done! 🎉
+          
+          ### Step 5: Upload Your First File
+          1. Click "Add File" or drag & drop
+          2. Select a file to upload
+          3. Watch it encrypt and upload securely
+          4. Your file is now stored encrypted in your private channels!
+          
+          ## 🔐 Security Tips
+          
+          - **Use a strong encryption password** - this protects all your files
+          - **Keep your bot token secret** - never share it with anyone
+          - **Use private channels only** - public channels are not secure
+          - **Create multiple channels** - for redundancy and reliability
+          
+          **Welcome to TSCloud - Your files, your bot, your security!** 🔐
+          EOF
+          
+      - name: Read release notes
+        id: release_notes
+        run: |
+          if [ -f "RELEASE_NOTES_${{ steps.version.outputs.version }}.md" ]; then
+            echo "notes_file=RELEASE_NOTES_${{ steps.version.outputs.version }}.md" >> $GITHUB_OUTPUT
+          else
+            echo "notes_file=CHANGELOG.md" >> $GITHUB_OUTPUT
+          fi
+          
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: TSCloud ${{ steps.version.outputs.version }} - Genesis
+          body_path: ${{ steps.release_notes.outputs.notes_file }}
+          files: |
+            release/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Upload release summary
+        run: |
+          echo "## 🎉 Release ${{ steps.version.outputs.version }} Created Successfully!"
+          echo ""
+          echo "### 📦 Release Assets:"
+          ls -la release/
+          echo ""
+          echo "### 🔗 Release URL:"
+          echo "https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.version }}"

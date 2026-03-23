@@ -1,8 +1,8 @@
-# SecureCloud Architecture
+# TSCloud Architecture
 
 ## System Overview
 
-SecureCloud implements a zero-knowledge encrypted cloud storage system using Telegram as the storage backend. The architecture ensures that all encryption happens locally, with Telegram only storing encrypted blobs that cannot be decrypted without the user's master password.
+TSCloud implements a zero-knowledge encrypted cloud storage system using Telegram as the storage backend. The architecture ensures that all encryption happens locally, with Telegram only storing encrypted blobs that cannot be decrypted without the user's master password.
 
 ## Core Components
 
@@ -57,7 +57,7 @@ Native Android application using Kotlin and Jetpack Compose:
 
 #### Architecture:
 ```
-android-client/app/src/main/java/com/securecloud/android/
+android-client/app/src/main/java/com/TSCloud/android/
 ├── crypto/           # Cryptographic operations
 ├── data/            # Database and repository layer
 ├── security/        # Android Keystore management
