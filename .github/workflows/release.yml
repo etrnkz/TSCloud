@@ -385,7 +385,7 @@ jobs:
           mv release/app-release-unsigned.apk release/TSCloud-Android-Release.apk
           
       - name: Upload Android artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: android-app
           path: |
@@ -421,7 +421,7 @@ jobs:
           tar -czf TSCloud-Web-Dashboard.tar.gz .next public package.json next.config.js
           
       - name: Upload web artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: web-dashboard
           path: web-dashboard/TSCloud-Web-Dashboard.tar.gz
