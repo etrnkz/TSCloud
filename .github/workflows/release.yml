@@ -48,6 +48,12 @@ jobs:
           toolchain: stable
           targets: ${{ matrix.target }}
           
+      - name: Install system dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev
+          
       - name: Install cross-compilation tools
         if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: |
@@ -71,6 +77,9 @@ jobs:
           key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           
       - name: Build Rust core
+        env:
+          OPENSSL_DIR: /usr
+          PKG_CONFIG_PATH: /usr/lib/x86_64-linux-gnu/pkgconfig
         run: |
           cd rust-core
           cargo build --release --target ${{ matrix.target }}
@@ -167,7 +176,7 @@ jobs:
       - name: Install packaging tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y dpkg-dev rpm alien fakeroot
+          sudo apt-get install -y dpkg-dev rpm alien fakeroot pkg-config libssl-dev
           
       - name: Restore dependencies
         run: |
