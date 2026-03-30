@@ -42,10 +42,10 @@ impl Default for AppConfig {
     fn default() -> Self {
         Self {
             telegram: TelegramConfig {
-                bot_token: "YOUR_BOT_TOKEN".to_string(),
-                channel_id: -1001234567890,
-                api_id: 12345,
-                api_hash: "your_api_hash".to_string(),
+                bot_token: String::new(),
+                channel_id: 0,
+                api_id: 0,
+                api_hash: String::new(),
             },
             security: SecurityConfig {
                 chunk_size: 16 * 1024 * 1024, // 16MB

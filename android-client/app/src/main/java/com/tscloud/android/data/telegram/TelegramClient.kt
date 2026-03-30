@@ -82,14 +82,7 @@ class TelegramClient @Inject constructor() {
         }
         .build()
 
-    init {
-        // Initialize with default config
-        initialize(TelegramConfig(
-            botToken = "8269631844:AAGULg5zlyNTTjlf35WtqRjhI9cQ5NztRdA",
-            channelId = "-1003876315930"
-        ))
-    }
-
+    /** Call [initialize] with user-supplied credentials from settings — never hardcode tokens. */
     fun initialize(config: TelegramConfig) {
         this.config = config
         

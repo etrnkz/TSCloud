@@ -15,6 +15,15 @@ class TSCloudRepository {
     private val _activities = mutableListOf<ActivityItem>()
     private val telegramClient = TelegramClient()
     private val cryptoManager = CryptoManager()
+
+    /** Call from setup UI with user-entered values — required before upload/download. */
+    fun configureTelegram(botToken: String, channelId: String) {
+        val token = botToken.trim()
+        val chat = channelId.trim()
+        if (token.isNotEmpty() && chat.isNotEmpty()) {
+            telegramClient.initialize(TelegramConfig(botToken = token, channelId = chat))
+        }
+    }
     
     init {
         // Add some demo data

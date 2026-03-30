@@ -1,6 +1,5 @@
 # Rust
 /rust-core/target/
-/rust-core/Cargo.lock
 *.pdb
 
 # .NET
@@ -20,6 +19,13 @@
 /android-client/local.properties
 *.apk
 *.aab
+
+# Node / Next.js (web-dashboard)
+/web-dashboard/node_modules/
+/web-dashboard/.next/
+
+# Legacy cbindgen output (use ts_cloud_core.h)
+**/secure_cloud_core.h
 
 # IDE
 .vscode/
@@ -47,7 +53,7 @@ local.properties
 
 # Native libraries (generated)
 /desktop-ui/native/
-secure_cloud_core.h
+ts_cloud_core.h
 
 # Temporary files
 *.tmp

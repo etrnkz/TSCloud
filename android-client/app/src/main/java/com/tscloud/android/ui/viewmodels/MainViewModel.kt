@@ -14,10 +14,11 @@ class MainViewModel : ViewModel() {
     private val _isEncryptionEnabled = MutableStateFlow(false)
     val isEncryptionEnabled: StateFlow<Boolean> = _isEncryptionEnabled.asStateFlow()
     
-    private val _botToken = MutableStateFlow("8269631844:AAGULg5zlyNTTjlf35WtqRjhI9cQ5NztRdA")
+    private val _botToken = MutableStateFlow("")
     val botToken: StateFlow<String> = _botToken.asStateFlow()
     
-    private val _channelId = MutableStateFlow(-1003876315930L)
+    /** Set from secure storage / setup UI — never commit real values. */
+    private val _channelId = MutableStateFlow(0L)
     val channelId: StateFlow<Long> = _channelId.asStateFlow()
     
     private val _isConnected = MutableStateFlow(false)
@@ -30,8 +31,8 @@ class MainViewModel : ViewModel() {
     
     private fun checkLoginStatus() {
         viewModelScope.launch {
-            // TODO: Check shared preferences or secure storage
-            _isLoggedIn.value = true // For now, assume logged in
+            // TODO: Restore session from DataStore / encrypted prefs
+            _isLoggedIn.value = false
         }
     }
     

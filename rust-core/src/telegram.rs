@@ -348,11 +348,11 @@ mod tests {
         // Test with invalid token - should fail gracefully
         let result = TelegramClient::new(
             "invalid_token".to_string(),
-            -1001234567890,
             12345,
             "test_hash".to_string(),
-            None
-        ).await;
+            None,
+        )
+        .await;
         
         assert!(result.is_err());
     }
@@ -425,7 +425,10 @@ mod tests {
         let chunk_id = "test_chunk_1".to_string();
         
         // Test upload
-        let message_id = client.upload_chunk(test_data.clone(), chunk_id).await.unwrap();
+        let message_id = client
+            .upload_chunk(test_data.clone(), chunk_id, -1001234567890)
+            .await
+            .unwrap();
         assert_eq!(message_id, 1);
         
         // Test download

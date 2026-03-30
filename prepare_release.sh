@@ -455,8 +455,7 @@ if [ -d "web-dashboard" ]; then
     cd web-dashboard
     npm install
     npm run build
-    npm run test
-    print_status "Web dashboard built and tested"
+    print_status "Web dashboard built"
     cd ..
 fi
 

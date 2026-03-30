@@ -5,7 +5,7 @@ namespace TSCloud.Desktop;
 
 public static class NativeMethods
 {
-    private const string DllName = "secure_cloud_core";
+    private const string DllName = "ts_cloud_core";
 
     // Error codes
     public const int SC_SUCCESS = 0;

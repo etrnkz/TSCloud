@@ -1,143 +1,34 @@
-# TSCloud v1.0.0 Release Notes
+# TSCloud v1.0.0 — Genesis
 
-**Release Date**: March 24, 2024  
-**Version**: 1.0.0  
+First public release of TSCloud: **zero-knowledge** encrypted storage on **your** Telegram bot and private channels.
 
-## Overview
+## Highlights
 
-TSCloud v1.0.0 is the initial stable release of an encrypted cloud storage system that uses Telegram as infrastructure. It provides end-to-end encryption with user-controlled bots and channels for maximum privacy and security.
+- **Rust core**: XChaCha20-Poly1305, Argon2id, BLAKE3; chunking and compression before upload
+- **Windows desktop**: WPF app with native FFI to the Rust library
+- **Android**: Kotlin / Jetpack Compose client (API 26+)
+- **Web dashboard**: Next.js management UI (self-hostable)
 
-## Key Features
+## Install
 
-### Security
-- XChaCha20-Poly1305 authenticated encryption
-- Argon2id key derivation from passwords
-- BLAKE3 cryptographic hashing for integrity
-- Zero-knowledge architecture
-- User-controlled infrastructure (own bots and channels)
+- **Windows**: Download `TSCloud-Windows-x64-v1.0.0.zip` (or x86) from this release, extract, run `TSCloud.Desktop.exe`
+- **Android**: Install `TSCloud-Android-v1.0.0.apk` (enable install from unknown sources if needed)
+- **Web**: Use `TSCloud-Web-Dashboard-v1.0.0.tar.gz` and follow `INSTALLATION_GUIDE.md` in the release assets
 
-### Multi-Platform Support
-- **Windows Desktop**: WPF application with full feature set
-- **Android Mobile**: Material 3 design with Kotlin/Compose
-- **Web Dashboard**: Next.js interface for management and monitoring
+Verify downloads with `TSCloud-v1.0.0-checksums.txt`.
 
-### Core Functionality
-- File upload/download with encryption
-- Real-time folder synchronization
-- File versioning and backup
-- Multi-channel redundancy
-- Performance analytics and monitoring
-- Dark/Light theme support
+## Setup (all platforms)
 
-## Technical Specifications
+1. Create a bot with [@BotFather](https://t.me/BotFather) and keep the token secret  
+2. Create **private** channels, add the bot as admin  
+3. Configure TSCloud with the token and channel IDs, then set your **master password**
 
-### Architecture
-- **Rust Core**: Cryptographic engine with FFI bindings
-- **Desktop**: C# WPF application
-- **Mobile**: Kotlin with Android Jetpack Compose
-- **Web**: TypeScript with Next.js framework
-- **Database**: SQLite for local metadata storage
+## Docs
 
-### Performance
-- Upload speeds: Up to 50MB/s (Telegram API limited)
-- Download speeds: Up to 100MB/s
-- Encryption overhead: Less than 5%
-- Memory usage: Under 100MB for desktop application
-- File size limit: 2GB per file (Telegram limitation)
+- [README](README.md) — overview and build commands  
+- [CHANGELOG](CHANGELOG.md) — full 1.0.0 notes  
+- [docs/](docs/) — setup, security, architecture  
 
-### System Requirements
+## Security
 
-#### Windows Desktop
-- Windows 10/11 (64-bit)
-- .NET 8.0 Runtime
-- 4GB RAM minimum
-- 100MB storage space
-
-#### Android Mobile
-- Android 7.0+ (API 24)
-- 2GB RAM minimum
-- 50MB storage space
-
-#### Web Dashboard
-- Modern browser with WebAssembly support
-- Chrome 90+, Firefox 88+, Safari 14+
-
-## Setup Process
-
-1. **Create Telegram Bot**
-   - Message @BotFather on Telegram
-   - Create bot and obtain token
-   - Create 1-3 private channels for storage
-   - Add bot as admin to channels
-
-2. **Install TSCloud**
-   - Download appropriate version for your platform
-   - Run installer or extract portable version
-   - Launch application
-
-3. **Configure**
-   - Enter bot token and channel IDs
-   - Test connectivity
-   - Set master encryption password
-   - Begin using the system
-
-## Security Model
-
-### Encryption Pipeline
-1. File read from local storage
-2. BLAKE3 hash calculation for integrity
-3. XChaCha20-Poly1305 encryption with random nonce
-4. Secure upload to Telegram channels
-5. Encrypted metadata storage locally
-
-### Privacy Protection
-- No telemetry or tracking
-- Local-only configuration storage
-- Private channel requirements
-- Keys never leave user devices
-- No shared infrastructure
-
-## Known Issues
-
-- Large file uploads may timeout on slow connections (use chunked uploads)
-- Android background sync may be limited by battery optimization
-- Web dashboard requires modern browser with WebAssembly support
-
-## Building from Source
-
-```bash
-git clone https://github.com/etrnkz/TSCloud.git
-cd TSCloud
-
-# Build Rust core
-cd rust-core && cargo build --release
-
-# Build desktop app
-cd ../desktop-ui && dotnet build --configuration Release
-
-# Build web dashboard
-cd ../web-dashboard && npm install && npm run build
-
-# Build Android app
-cd ../android-client && ./gradlew assembleRelease
-```
-
-## License
-
-TSCloud is released under the MIT License. See LICENSE file for details.
-
-## Support
-
-- **Issues**: Report bugs on GitHub Issues
-- **Documentation**: Available in docs/ directory
-- **Security**: Report security issues to security@tscloud.dev
-
-## Acknowledgments
-
-- Telegram for providing the infrastructure platform
-- Rust cryptography community for excellent libraries
-- Open source contributors and maintainers
-
----
-
-**Download TSCloud v1.0.0 from the GitHub Releases page**
+Lost master password means **lost data** by design. Use strong passwords and secure devices.

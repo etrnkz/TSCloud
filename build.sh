@@ -16,11 +16,11 @@ cd ..
 # Copy generated header and library for C# project
 echo "Copying native libraries for C# project..."
 mkdir -p desktop-ui/native
-cp rust-core/target/release/secure_cloud_core.dll desktop-ui/native/ 2>/dev/null || \
-cp rust-core/target/release/libsecure_cloud_core.so desktop-ui/native/ 2>/dev/null || \
-cp rust-core/target/release/libsecure_cloud_core.dylib desktop-ui/native/ 2>/dev/null || true
+cp rust-core/target/release/ts_cloud_core.dll desktop-ui/native/ 2>/dev/null || \
+cp rust-core/target/release/libts_cloud_core.so desktop-ui/native/ 2>/dev/null || \
+cp rust-core/target/release/libts_cloud_core.dylib desktop-ui/native/ 2>/dev/null || true
 
-cp rust-core/secure_cloud_core.h desktop-ui/native/
+cp rust-core/ts_cloud_core.h desktop-ui/native/ 2>/dev/null || true
 
 # Build C# Desktop Application
 echo "Building C# desktop application..."

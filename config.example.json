@@ -1,0 +1,37 @@
+{
+  "telegram": {
+    "bot_token": "PASTE_BOT_TOKEN_FROM_BOTFATHER",
+    "channels": [
+      {
+        "id": -1000000000000,
+        "name": "Primary Storage",
+        "priority": 1,
+        "active": true,
+        "max_file_size": 52428800,
+        "description": "Private channel; bot must be admin"
+      }
+    ],
+    "redundancy": {
+      "enabled": true,
+      "min_copies": 1,
+      "max_copies": 3,
+      "verify_uploads": true,
+      "auto_repair": false
+    },
+    "load_balancing": {
+      "strategy": "round_robin",
+      "health_check_interval": 300,
+      "retry_attempts": 3,
+      "timeout": 30
+    },
+    "api_id": 0,
+    "api_hash": "PASTE_API_HASH_FROM_MY_TELEGRAM_ORG"
+  },
+  "security": {
+    "chunk_size": 16777216,
+    "compression_level": 3
+  },
+  "database": {
+    "path": "secure_cloud.db"
+  }
+}

@@ -9,7 +9,7 @@ import {
   BellIcon,
   CloudIcon,
   UserIcon,
-  DevicePhoneIcon,
+  DevicePhoneMobileIcon,
   ComputerDesktopIcon,
   GlobeAltIcon
 } from '@heroicons/react/24/outline'
@@ -390,7 +390,7 @@ export default function Settings() {
           
           <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
             <div className="flex items-center">
-              <DevicePhoneIcon className="h-5 w-5 text-gray-500 mr-3" />
+              <DevicePhoneMobileIcon className="h-5 w-5 text-gray-500 mr-3" />
               <div>
                 <p className="text-sm font-medium text-gray-900 dark:text-white">Android App</p>
                 <p className="text-xs text-gray-500 dark:text-gray-400">Last active: 1 hour ago</p>
