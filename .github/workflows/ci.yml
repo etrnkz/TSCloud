@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust:
+    name: Rust (test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cargo test
+        run: cd rust-core && cargo test --release
+
+  web:
+    name: Web dashboard (build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('web-dashboard/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+      - name: Install
+        run: cd web-dashboard && npm ci
+      - name: Build
+        run: cd web-dashboard && npm run build
+
+  desktop:
+    name: Desktop (.NET Release)
+    runs-on: windows-latest
+    needs: []
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build Rust DLL
+        run: cd rust-core && cargo build --release
+      - name: Copy native DLL for project
+        run: |
+          New-Item -ItemType Directory -Force -Path desktop-ui/native | Out-Null
+          Copy-Item rust-core/target/release/ts_cloud_core.dll desktop-ui/native/ -ErrorAction SilentlyContinue
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: dotnet build
+        run: cd desktop-ui && dotnet build --configuration Release
+
+  android:
+    name: Android (assembleDebug)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v2
+      - name: Gradle wrapper
+        run: chmod +x android-client/gradlew
+      - name: Assemble debug
+        run: cd android-client && ./gradlew assembleDebug --no-daemon
