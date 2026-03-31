@@ -9,7 +9,12 @@ on:
       version:
         description: 'Release version (e.g., v1.0.0)'
         required: true
+        default: 'v1.0.0'
         type: string
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   CARGO_TERM_COLOR: always
@@ -19,7 +24,7 @@ jobs:
     name: Rust unit tests (native Linux)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
       - name: Run tests
@@ -50,7 +55,7 @@ jobs:
             target: aarch64-apple-darwin
             artifact: libts_cloud_core.dylib
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -114,7 +119,7 @@ jobs:
             target: i686-pc-windows-msvc
             runtime: win-x86
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -169,7 +174,7 @@ jobs:
           - distro: arch
             target: x86_64-unknown-linux-gnu
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -352,7 +357,7 @@ jobs:
     name: Build Android App
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -414,7 +419,7 @@ jobs:
     name: Build Web Dashboard
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -451,7 +456,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
           
