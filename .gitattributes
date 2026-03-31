@@ -1,0 +1,2 @@
+# Gradle wrapper must stay LF for Linux/macOS CI
+android-client/gradlew text eol=lf
