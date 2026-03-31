@@ -447,7 +447,7 @@ jobs:
       - name: Create web package
         run: |
           cd web-dashboard
-          tar -czf TSCloud-Web-Dashboard.tar.gz .next public src package.json package-lock.json next.config.js tailwind.config.js postcss.config.js tsconfig.json next-env.d.ts
+          tar --ignore-failed-read -czf TSCloud-Web-Dashboard.tar.gz .next public src package.json package-lock.json next.config.js tailwind.config.js postcss.config.js tsconfig.json next-env.d.ts
           
       - name: Upload web artifacts
         uses: actions/upload-artifact@v5
