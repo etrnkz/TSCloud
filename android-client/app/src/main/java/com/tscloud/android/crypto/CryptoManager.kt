@@ -8,6 +8,8 @@ import org.bouncycastle.crypto.params.ParametersWithIV
 import org.bouncycastle.crypto.digests.Blake3Digest
 import org.bouncycastle.crypto.macs.Poly1305
 import java.security.SecureRandom
+import javax.inject.Inject
+import javax.inject.Singleton
 import javax.crypto.Cipher
 import javax.crypto.spec.ChaCha20ParameterSpec
 import javax.crypto.spec.SecretKeySpec
@@ -19,7 +21,8 @@ data class EncryptionResult(
     val hash: ByteArray
 )
 
-class CryptoManager {
+@Singleton
+class CryptoManager @Inject constructor() {
     companion object {
         private const val KEY_SIZE = 32
         private const val NONCE_SIZE = 24

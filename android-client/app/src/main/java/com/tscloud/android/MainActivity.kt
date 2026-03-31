@@ -2,6 +2,7 @@ package com.tscloud.android
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import dagger.hilt.android.AndroidEntryPoint
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,6 +20,7 @@ import com.tscloud.android.ui.screens.*
 import com.tscloud.android.ui.theme.TSCloudTheme
 import com.tscloud.android.ui.viewmodels.MainViewModel
 
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

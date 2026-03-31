@@ -4,17 +4,29 @@ import com.tscloud.android.data.model.FileItem
 import com.tscloud.android.data.model.ActivityItem
 import com.tscloud.android.data.model.ActivityType
 import com.tscloud.android.data.telegram.TelegramClient
+import com.tscloud.android.data.telegram.TelegramConfig
 import com.tscloud.android.crypto.CryptoManager
 import kotlinx.coroutines.delay
 import java.util.*
 import java.io.File
+import javax.inject.Inject
+import javax.inject.Singleton
 
-class TSCloudRepository {
+@Singleton
+class TSCloudRepository @Inject constructor(
+    private val telegramClient: TelegramClient,
+    private val cryptoManager: CryptoManager,
+) {
+
+    private var masterKey: ByteArray? = null
+
+    /** Session key derived at login; used by crypto flows once wired end-to-end. */
+    fun setMasterKey(key: ByteArray) {
+        masterKey = key.copyOf()
+    }
     
     private val _files = mutableListOf<FileItem>()
     private val _activities = mutableListOf<ActivityItem>()
-    private val telegramClient = TelegramClient()
-    private val cryptoManager = CryptoManager()
 
     /** Call from setup UI with user-entered values — required before upload/download. */
     fun configureTelegram(botToken: String, channelId: String) {

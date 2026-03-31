@@ -2,16 +2,19 @@ package com.tscloud.android.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.tscloud.android.data.model.FileItem
+import com.tscloud.android.data.repository.TSCloudRepository
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import com.tscloud.android.data.model.FileItem
-import com.tscloud.android.data.repository.TSCloudRepository
 import java.util.*
+import javax.inject.Inject
 
-class FileListViewModel(
-    private val repository: TSCloudRepository = TSCloudRepository()
+@HiltViewModel
+class FileListViewModel @Inject constructor(
+    private val repository: TSCloudRepository
 ) : ViewModel() {
     
     private val _files = MutableStateFlow<List<FileItem>>(emptyList())
