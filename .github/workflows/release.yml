@@ -95,7 +95,7 @@ jobs:
           cargo build --release --target ${{ matrix.target }}
           
       - name: Upload Rust artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: rust-core-${{ matrix.target }}
           path: rust-core/target/${{ matrix.target }}/release/${{ matrix.artifact }}
@@ -122,7 +122,7 @@ jobs:
           dotnet-version: '8.0.x'
           
       - name: Download Rust artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: rust-core-${{ matrix.target }}
           path: desktop-ui/native/
@@ -148,7 +148,7 @@ jobs:
           Compress-Archive -Path * -DestinationPath "../../TSCloud-Windows-${{ matrix.arch }}.zip"
           
       - name: Upload desktop artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: desktop-windows-${{ matrix.arch }}
           path: desktop-ui/TSCloud-Windows-${{ matrix.arch }}.zip
@@ -177,7 +177,7 @@ jobs:
           dotnet-version: '8.0.x'
           
       - name: Download Rust artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: rust-core-${{ matrix.target }}
           path: desktop-ui/native/
@@ -343,7 +343,7 @@ jobs:
           tar -czf ../TSCloud-Linux-${{ matrix.distro }}.pkg.tar.xz PKGBUILD
           
       - name: Upload Linux packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: desktop-linux-${{ matrix.distro }}
           path: TSCloud-Linux-${{ matrix.distro }}.*
@@ -403,7 +403,7 @@ jobs:
           mv release/app-release-unsigned.apk release/TSCloud-Android-Release.apk
           
       - name: Upload Android artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: android-app
           path: |
@@ -439,7 +439,7 @@ jobs:
           tar -czf TSCloud-Web-Dashboard.tar.gz .next public src package.json package-lock.json next.config.js tailwind.config.js postcss.config.js tsconfig.json next-env.d.ts
           
       - name: Upload web artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: web-dashboard
           path: web-dashboard/TSCloud-Web-Dashboard.tar.gz
@@ -465,7 +465,7 @@ jobs:
           fi
           
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: artifacts/
           
@@ -1034,7 +1034,7 @@ jobs:
           fi
           
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.version }}
           name: TSCloud ${{ steps.version.outputs.version }} - Genesis
@@ -1043,8 +1043,7 @@ jobs:
             release/*
           draft: false
           prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           
       - name: Upload release summary
         run: |
